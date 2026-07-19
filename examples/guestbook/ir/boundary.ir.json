@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "guestbook",
+  "operations": [
+    {
+      "id": "entries.list",
+      "capability": "entries.list",
+      "input": "void",
+      "output": "entry-page",
+      "errors": ["SERVICE_UNAVAILABLE"]
+    },
+    {
+      "id": "entries.sign",
+      "capability": "entries.sign",
+      "input": "sign-entry-input",
+      "output": "entry",
+      "errors": ["VALIDATION_FAILED", "SERVICE_UNAVAILABLE"],
+      "idempotencyKey": "required"
+    }
+  ],
+  "schemas": [
+    {
+      "id": "sign-entry-input",
+      "kind": "object",
+      "fields": [
+        { "id": "author", "type": "string", "required": true },
+        { "id": "message", "type": "string", "required": true }
+      ]
+    },
+    {
+      "id": "entry-page",
+      "kind": "object",
+      "fields": [
+        { "id": "items", "type": "array", "required": true },
+        { "id": "total", "type": "integer", "required": true }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "VALIDATION_FAILED",
+      "presentationHint": "field",
+      "field": "message"
+    }
+  ],
+  "subscriptions": [],
+  "versioningPolicy": "compatible-additive"
+}

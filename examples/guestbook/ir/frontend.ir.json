@@ -1,0 +1,170 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "guestbook",
+  "routes": [
+    {
+      "id": "route.home",
+      "path": "/",
+      "screen": "screen.home"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.home",
+      "rootNode": "semantic.guestbook"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.guestbook",
+      "level": "semantic",
+      "kind": "dashboard",
+      "slots": {
+        "content": ["component.entry-list", "component.sign-form"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "narrow"
+      },
+      "responsive": {
+        "phone": "stack",
+        "desktop": "stack"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.guestbook"
+    },
+    {
+      "id": "component.entry-list",
+      "level": "component",
+      "kind": "list",
+      "slots": {},
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Guestbook entries"
+      },
+      "sourceRef": "brief.entry-list"
+    },
+    {
+      "id": "component.sign-form",
+      "level": "component",
+      "kind": "form",
+      "slots": {
+        "fields": ["atomic.author", "atomic.message"],
+        "actions": ["atomic.sign"]
+      },
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "submit",
+          "operation": "entries.sign",
+          "input": {
+            "author": "atomic.author.value",
+            "message": "atomic.message.value"
+          }
+        }
+      ],
+      "states": ["idle", "submitting", "success", "validation-error", "service-error"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Sign the guestbook"
+      },
+      "sourceRef": "brief.sign-form"
+    },
+    {
+      "id": "atomic.author",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Your name",
+        "required": true
+      },
+      "sourceRef": "domain.entry.author"
+    },
+    {
+      "id": "atomic.message",
+      "level": "atomic",
+      "kind": "textarea",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Message",
+        "required": true
+      },
+      "sourceRef": "domain.entry.message"
+    },
+    {
+      "id": "atomic.sign",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "submit-nearest-form"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Sign guestbook"
+      },
+      "sourceRef": "capability.entries.sign"
+    }
+  ],
+  "flows": [],
+  "localState": [],
+  "operationBindings": [
+    {
+      "node": "component.entry-list",
+      "operation": "entries.list"
+    },
+    {
+      "node": "component.sign-form",
+      "operation": "entries.sign"
+    }
+  ],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg",
+    "--muted",
+    "--border",
+    "--accent"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

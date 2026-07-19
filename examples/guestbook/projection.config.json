@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "application": "application.ir.json",
+  "targets": [
+    {
+      "id": "html-static",
+      "adapter": "html-static",
+      "mode": "scaffold",
+      "outputRoot": "generated/html-static",
+      "frontend": { "adapter": "html-static" }
+    },
+    {
+      "id": "react-vite",
+      "adapter": "react-vite",
+      "mode": "scaffold",
+      "outputRoot": "generated/react-vite",
+      "frontend": { "adapter": "react-vite" }
+    },
+    {
+      "id": "nextjs-app",
+      "adapter": "nextjs-app",
+      "mode": "scaffold",
+      "outputRoot": "generated/nextjs-app",
+      "frontend": { "adapter": "nextjs-app" }
+    },
+    {
+      "id": "mock-local",
+      "adapter": "mock-local",
+      "mode": "scaffold",
+      "outputRoot": "generated/mock-local",
+      "transport": { "adapter": "mock-local" }
+    },
+    {
+      "id": "sqlite-better-sqlite3",
+      "adapter": "sqlite-better-sqlite3",
+      "mode": "scaffold",
+      "outputRoot": "generated/sqlite-better-sqlite3",
+      "persistence": { "adapter": "sqlite-better-sqlite3" }
+    }
+  ]
+}

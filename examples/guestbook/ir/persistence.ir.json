@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "guestbook",
+  "aggregates": [
+    {
+      "id": "entry",
+      "rootEntity": "entry",
+      "transactionBoundary": true
+    }
+  ],
+  "repositories": [
+    {
+      "id": "entry-repository",
+      "aggregate": "entry",
+      "operations": ["get", "list", "insert"]
+    }
+  ],
+  "relations": [],
+  "indexes": [
+    {
+      "id": "entry-created-at",
+      "entity": "entry",
+      "fields": ["createdAt"],
+      "unique": false
+    }
+  ],
+  "uniqueness": [],
+  "retention": [],
+  "deletionPolicies": [
+    {
+      "entity": "entry",
+      "mode": "hard"
+    }
+  ],
+  "concurrency": [],
+  "migrationIntent": []
+}

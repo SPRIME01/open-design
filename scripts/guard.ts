@@ -141,6 +141,9 @@ const residualAllowedPathPrefixes = [
   "apps/web/.next/",
   "apps/web/out/",
   "generated/",
+  // Application-compiler output for the guestbook evidence app (gitignored;
+  // regenerated deterministically via `od compiler compile`).
+  "examples/guestbook/generated/",
   "e2e/playwright-report/",
   "e2e/reports/html/",
   "e2e/reports/playwright-html-report/",

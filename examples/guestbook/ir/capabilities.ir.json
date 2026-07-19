@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "guestbook",
+  "queries": [
+    {
+      "id": "entries.list",
+      "input": "void",
+      "output": "entry-page",
+      "authorization": "entry.read",
+      "errors": ["SERVICE_UNAVAILABLE"]
+    }
+  ],
+  "commands": [
+    {
+      "id": "entries.sign",
+      "input": "sign-entry-input",
+      "output": "entry",
+      "transactional": true,
+      "idempotency": "required",
+      "authorization": "entry.create",
+      "preconditions": [],
+      "effects": [
+        { "kind": "create", "entity": "entry" },
+        { "kind": "emit", "event": "entry-signed" }
+      ],
+      "errors": ["VALIDATION_FAILED", "SERVICE_UNAVAILABLE"]
+    }
+  ],
+  "events": [
+    {
+      "id": "entry-signed",
+      "payload": "entry",
+      "ordering": "per-aggregate",
+      "replay": "not-required",
+      "criticality": "advisory"
+    }
+  ],
+  "workflows": [],
+  "authorizationCapabilities": ["entry.read", "entry.create"],
+  "errorCatalog": [
+    { "id": "VALIDATION_FAILED", "recoverable": true },
+    { "id": "SERVICE_UNAVAILABLE", "recoverable": true }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "guestbook",
+  "entities": [
+    {
+      "id": "entry",
+      "identity": "entry.id",
+      "fields": [
+        { "id": "entry.id", "type": "uuid", "generated": true },
+        { "id": "entry.author", "type": "string", "minLength": 1, "maxLength": 80 },
+        { "id": "entry.message", "type": "string", "minLength": 1, "maxLength": 500 },
+        { "id": "entry.created-at", "type": "timestamp", "generated": true }
+      ],
+      "invariants": ["entry.message-not-empty"]
+    }
+  ],
+  "enums": [],
+  "valueObjects": [],
+  "scalarTypes": [],
+  "invariants": [
+    {
+      "id": "entry.message-not-empty",
+      "description": "A guestbook entry must contain a non-empty message."
+    }
+  ],
+  "stateMachines": []
+}
