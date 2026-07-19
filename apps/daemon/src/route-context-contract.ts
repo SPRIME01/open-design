@@ -19,6 +19,7 @@ import type { RegisterSocialShareRoutesDeps } from './routes/social-share.js';
 import type { RegisterStaticResourceRoutesDeps } from './routes/static-resource.js';
 import type { RegisterVelaRoutesDeps } from './routes/vela.js';
 import type { RegisterXaiRoutesDeps } from './routes/xai.js';
+import type { RegisterCompilerRoutesDeps } from './routes/compiler.js';
 
 type AllRegisteredRouteDeps =
   & RegisterActiveContextRoutesDeps
@@ -46,7 +47,8 @@ type AllRegisteredRouteDeps =
   & RegisterSocialShareRoutesDeps
   & RegisterStaticResourceRoutesDeps
   & RegisterVelaRoutesDeps
-  & RegisterXaiRoutesDeps;
+  & RegisterXaiRoutesDeps
+  & RegisterCompilerRoutesDeps;
 
 type Assert<T extends true> = T;
 type ServerContextCoversRouteDeps = Assert<ServerContext extends AllRegisteredRouteDeps ? true : false>;

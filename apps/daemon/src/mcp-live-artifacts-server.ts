@@ -106,6 +106,24 @@ export function createLiveArtifactsMcpTools(): McpTool[] {
         },
       },
     },
+    {
+      name: 'compiler_targets',
+      description: 'List all registered target adapters in the compiler. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" compiler targets`.',
+      inputSchema: EMPTY_OBJECT_SCHEMA,
+    },
+    {
+      name: 'compiler_compile',
+      description: 'Run the compilation pipeline for a target. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" compiler compile --project <path> --target <targetId>`.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['targetId'],
+        properties: {
+          projectRoot: { type: 'string' },
+          targetId: { type: 'string', minLength: 1 },
+        },
+      },
+    },
   ];
 }
 
@@ -197,6 +215,24 @@ async function callTool(name: string, args: JsonObject): Promise<unknown> {
       method: 'POST',
       body: JSON.stringify({ connectorId: args.connectorId, toolName: args.toolName, input: args.input ?? {} }),
     });
+  }
+  if (name === 'compiler_targets') {
+    return await requestJson('/api/compiler/targets', { method: 'GET' });
+  }
+  if (name === 'compiler_compile') {
+    const projectRoot = typeof args.projectRoot === 'string' ? args.projectRoot : '.';
+    const targetId = args.targetId;
+    const startRes = await requestJson('/api/compiler/runs', {
+      method: 'POST',
+      body: JSON.stringify({ projectRoot, targetId }),
+    }) as any;
+    const runId = startRes.runId;
+    let status = startRes.status;
+    while (status.status !== 'succeeded' && status.status !== 'failed' && status.status !== 'cancelled') {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      status = await requestJson(`/api/compiler/runs/${runId}`, { method: 'GET' });
+    }
+    return status;
   }
   throw new Error(`unknown MCP tool: ${name}`);
 }

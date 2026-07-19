@@ -446,3 +446,74 @@ We inherit the agent's permission model on purpose — we don't invent our own s
 - Collaborative editing
 - Mobile web support (desktop only in MVP)
 - Offline mode (beyond "the agent is local" — we don't cache model responses)
+
+---
+
+## 12. Application Compiler
+
+The Application Compiler translates a versioned semantic intermediate representation (IR) into framework-native, runnable application targets. It is a separate compilation pipeline from the prototype/skill generation loop described above.
+
+### 12.1 Packages
+
+| Package | Role |
+|---|---|
+| `@open-design/application-ir` | Zod-validated IR schema, ID normalization, collision resolution, semantic hashing, cross-reference validation |
+| `@open-design/application-compiler` | 9-pass compiler pipeline, compile plan builders, adapter registry, manifest generation |
+| `@open-design/application-targets` | Built-in target adapters: `html-static`, `react-vite`, `nextjs-app`, `sveltekit`, `mock-local`, `next-server-actions`, `sqlite-better-sqlite3` |
+
+### 12.2 Compiler pipeline
+
+```
+application.ir.json
+      │
+      ▼
+ [1] validate        — Zod schema + cross-reference checks, no IR mutation
+ [2] resolve         — resolve all IR cross-references by stable ID
+ [3] normalize       — normalize IDs, deduplicate, sort for determinism
+ [4] lower           — lower high-level semantic nodes to adapter-ready forms
+ [5] plan            — build compile plan: creates, modifications, deletes, conflicts
+ [6] project         — invoke target adapter, emit FileChange[] objects
+ [7] write           — write file changes to disk (ProjectWriter)
+ [8] verify          — run typecheck / build / tests via VerificationRunner
+      │
+      ▼
+ generated/<target>/     ← runnable output
+ compiler/manifests/     ← deterministic file manifest
+ compiler/plans/         ← reviewable compile plan
+ compiler/evidence/      ← verification results
+ compiler/diagnostics/   ← structured diagnostics
+```
+
+### 12.3 Daemon API surface
+
+```
+GET  /api/compiler/targets            ← list registered target adapters
+POST /api/compiler/runs               ← start an async compile run
+                                          body: { projectRoot, targetId }
+                                          returns: { runId, status }
+GET  /api/compiler/runs/:runId        ← poll run status and diagnostics
+```
+
+Runs are fully async. The POST endpoint returns immediately with a `runId`; the client polls `/api/compiler/runs/:runId` until `status` is `"succeeded"`, `"failed"`, or `"cancelled"`.
+
+### 12.4 CLI and MCP surface
+
+```bash
+od compiler targets                              # list available targets
+od compiler compile \
+  --project <path> \
+  --target <id> \
+  [--wait]                                       # poll until done
+  [--json]                                       # machine-readable output
+```
+
+MCP tools: `compiler_targets`, `compiler_compile` — exposed through the stdio MCP server in `apps/daemon/src/mcp-live-artifacts-server.ts`.
+
+### 12.5 Boundary constraints
+
+- `packages/application-ir` and `packages/application-compiler` must remain pure TypeScript with no Node.js filesystem or process APIs. They are importable in browser and Node contexts alike.
+- `packages/application-targets` may import Node.js APIs because adapters run inside the daemon process.
+- `apps/daemon/src/compiler/` owns the daemon-side compiler orchestration (service, project writer, verification runner). It must not be imported by `apps/web`.
+- All compiler API DTOs live in `packages/contracts/src/api/compiler.ts`. Update contracts before changing request or response shapes.
+- The compiler must read `application.ir.json` from the project root. It must not discover IR by crawling arbitrary directories.
+

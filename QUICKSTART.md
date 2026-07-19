@@ -278,6 +278,92 @@ location /api/ {
 
 Both modes feed the **same** `<artifact>` parser and the **same** sandboxed iframe. The only thing that differs is the transport and the system-prompt delivery (local CLIs have no separate system channel, so the composed prompt is folded into the user message).
 
+---
+
+## Application Compiler
+
+The Application Compiler translates a semantic IR bundle into a production-ready, framework-native application. It is independent from the prototype/skill generation loop — it does not spawn an agent.
+
+### 1. Create your IR file
+
+Create `my-app/application.ir.json`:
+
+```json
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "my-app",
+  "bundle": {
+    "name": "My Application",
+    "applicationId": "my-app"
+  },
+  "frontend": {
+    "screens": [{ "id": "home", "title": "Home" }],
+    "nodes": [
+      { "id": "submit-btn", "kind": "button", "level": "atomic" }
+    ]
+  }
+}
+```
+
+### 2. Start the daemon
+
+```bash
+pnpm tools-dev start daemon   # starts daemon on port 7457 by default
+```
+
+### 3. List available targets
+
+```bash
+od compiler targets
+```
+
+Outputs all registered target adapters: `html-static`, `react-vite`, `nextjs-app`, `sveltekit`, `mock-local`, `next-server-actions`, `sqlite-better-sqlite3`.
+
+### 4. Compile
+
+```bash
+od compiler compile --project ./my-app --target react-vite --wait
+```
+
+`--wait` polls the run until it completes and prints the result. Drop `--wait` for fire-and-forget. Add `--json` for machine-readable output.
+
+### 5. Use the output
+
+```bash
+cd my-app/generated/react-vite
+pnpm install
+pnpm build   # verifies the generated project builds cleanly
+```
+
+### Retargeting
+
+The same `application.ir.json` compiles to every target:
+
+```bash
+for target in html-static react-vite nextjs-app sveltekit; do
+  od compiler compile --project ./my-app --target $target --wait
+done
+```
+
+Generated output lands under `my-app/generated/<target>/`. Compile plans, manifests, and verification evidence land under `my-app/compiler/`.
+
+### Daemon API (scripted use)
+
+```bash
+# List targets
+curl http://localhost:7457/api/compiler/targets | jq
+
+# Start a compile run
+curl -X POST http://localhost:7457/api/compiler/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"projectRoot":"./my-app","targetId":"react-vite"}'
+
+# Poll the run
+curl http://localhost:7457/api/compiler/runs/<runId> | jq .status
+```
+
+See [`docs/architecture.md`](docs/architecture.md) §12 for the full boundary contract.
+
 ## Prompt composition
 
 For every send, the app builds a system prompt from three layers and sends it to the provider:
@@ -317,7 +403,10 @@ open-design/
 │       └── next.config.ts     # tools-dev rewrites + prod apps/web/out export config
 │   └── desktop/               # Electron runtime, launched/inspected by tools-dev
 ├── packages/
-│   ├── contracts/             # shared web/daemon app contracts
+│   ├── contracts/             # shared web/daemon app contracts (incl. compiler DTOs)
+│   ├── application-ir/        # versioned IR schema + Zod validation + semantic hashing
+│   ├── application-compiler/  # 9-pass compiler pipeline + adapter registry + manifest
+│   ├── application-targets/   # built-in target adapters (html-static, react-vite, nextjs-app, …)
 │   ├── sidecar-proto/         # Open Design sidecar protocol contract
 │   ├── sidecar/               # generic sidecar runtime primitives
 │   └── platform/              # generic process/platform primitives
@@ -368,7 +457,8 @@ open-design/
 
 This Quickstart is the runnable seed of the spec in [`docs/`](docs/). The spec describes where this grows (see [`docs/roadmap.md`](docs/roadmap.md)). Highlights:
 
-- `docs/architecture.md` describes the shipped stack: Next.js 16 App Router in front, local daemon behind it, and `apps/web/next.config.ts` rewrites in dev to keep the browser talking to the same `/api` surface.
+- `docs/architecture.md` describes the shipped stack: Next.js 16 App Router in front, local daemon behind it, `apps/web/next.config.ts` rewrites in dev to keep the browser talking to the same `/api` surface, and §12 for the Application Compiler pipeline and boundary constraints.
 - `docs/skills-protocol.md` describes the full `od:` frontmatter (typed inputs, sliders, capability gating). This MVP reads `name` / `description` / `triggers` / `od.mode` / `od.design_system.requires` only — extend `apps/daemon/src/skills.ts` to add the rest.
 - `docs/agent-adapters.md` foresees richer dispatch (capability detection, streaming tool-calls). Our `apps/daemon/src/agents.ts` is a minimal dispatcher — enough to prove the wiring.
 - `docs/modes.md` lists four modes: prototype / deck / template / design-system. We ship skills for the first two; the picker already filters by `mode`.
+- The Application Compiler (`packages/application-compiler`) is an independent pipeline that does not go through the agent loop. It reads `application.ir.json`, runs 9 deterministic passes, and writes framework-native targets to `generated/<target>/`. See the **Application Compiler** section above for the quick-start flow.

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "project-console",
+  "entities": [
+    {
+      "id": "project",
+      "identity": "project.id",
+      "fields": [
+        { "id": "project.id", "type": "uuid", "generated": true },
+        { "id": "project.name", "type": "string", "minLength": 1, "maxLength": 120 },
+        { "id": "project.status", "type": "project-status", "default": "active" },
+        { "id": "project.version", "type": "integer", "default": 1 }
+      ],
+      "invariants": [
+        "project.name-unique-within-owner",
+        "project.archived-is-readonly"
+      ]
+    }
+  ],
+  "enums": [
+    {
+      "id": "project-status",
+      "values": ["active", "archived"]
+    }
+  ],
+  "valueObjects": [],
+  "scalarTypes": [],
+  "invariants": [
+    {
+      "id": "project.name-unique-within-owner",
+      "description": "Project names are unique within one owner."
+    },
+    {
+      "id": "project.archived-is-readonly",
+      "description": "Archived projects cannot be modified."
+    }
+  ],
+  "stateMachines": [
+    {
+      "id": "project-lifecycle",
+      "states": ["active", "archived"],
+      "transitions": [
+        { "id": "project.archive", "from": ["active"], "to": "archived" }
+      ]
+    }
+  ]
+}

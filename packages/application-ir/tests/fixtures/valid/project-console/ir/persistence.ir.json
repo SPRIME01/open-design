@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "project-console",
+  "aggregates": [
+    {
+      "id": "project",
+      "rootEntity": "project",
+      "transactionBoundary": true
+    }
+  ],
+  "repositories": [
+    {
+      "id": "project-repository",
+      "aggregate": "project",
+      "operations": ["get", "list", "insert", "update"]
+    }
+  ],
+  "relations": [],
+  "indexes": [
+    {
+      "id": "project-owner-status",
+      "entity": "project",
+      "fields": ["ownerId", "status"],
+      "unique": false
+    }
+  ],
+  "uniqueness": [
+    {
+      "id": "project-name-per-owner",
+      "entity": "project",
+      "fields": ["ownerId", "name"]
+    }
+  ],
+  "retention": [],
+  "deletionPolicies": [
+    {
+      "entity": "project",
+      "mode": "soft"
+    }
+  ],
+  "concurrency": [
+    {
+      "aggregate": "project",
+      "strategy": "optimistic",
+      "versionField": "version"
+    }
+  ],
+  "migrationIntent": []
+}

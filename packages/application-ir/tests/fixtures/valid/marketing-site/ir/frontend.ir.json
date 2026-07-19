@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "marketing-site",
+  "routes": [
+    {
+      "id": "route.home",
+      "path": "/",
+      "screen": "screen.home"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.home",
+      "rootNode": "semantic.landing-page"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.landing-page",
+      "level": "semantic",
+      "kind": "landing",
+      "slots": {
+        "content": ["component.hero-banner", "component.cta-section"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.landing-page"
+    },
+    {
+      "id": "component.hero-banner",
+      "level": "component",
+      "kind": "hero",
+      "slots": {},
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.hero-banner"
+    },
+    {
+      "id": "component.cta-section",
+      "level": "component",
+      "kind": "cta",
+      "slots": {},
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.cta"
+    }
+  ],
+  "flows": [],
+  "localState": [],
+  "operationBindings": [],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

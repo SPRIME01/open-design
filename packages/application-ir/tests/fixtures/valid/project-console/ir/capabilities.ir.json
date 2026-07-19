@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "project-console",
+  "queries": [
+    {
+      "id": "projects.list",
+      "input": "project-filter",
+      "output": "project-page",
+      "authorization": "project.read",
+      "errors": ["UNAUTHORIZED", "SERVICE_UNAVAILABLE"]
+    }
+  ],
+  "commands": [
+    {
+      "id": "projects.create",
+      "input": "create-project-input",
+      "output": "project",
+      "transactional": true,
+      "idempotency": "required",
+      "authorization": "project.create",
+      "preconditions": [],
+      "effects": [
+        { "kind": "create", "entity": "project" },
+        { "kind": "emit", "event": "project-created" }
+      ],
+      "errors": ["PROJECT_NAME_CONFLICT", "UNAUTHORIZED", "VALIDATION_FAILED"]
+    }
+  ],
+  "events": [
+    {
+      "id": "project-created",
+      "payload": "project",
+      "ordering": "per-aggregate",
+      "replay": "not-required",
+      "criticality": "advisory"
+    }
+  ],
+  "workflows": [],
+  "authorizationCapabilities": ["project.read", "project.create"],
+  "errorCatalog": [
+    { "id": "PROJECT_NAME_CONFLICT", "recoverable": true },
+    { "id": "UNAUTHORIZED", "recoverable": true },
+    { "id": "VALIDATION_FAILED", "recoverable": true },
+    { "id": "SERVICE_UNAVAILABLE", "recoverable": true }
+  ]
+}

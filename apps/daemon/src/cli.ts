@@ -314,6 +314,7 @@ const PLUGIN_LIST_BOOLEAN_FLAGS = new Set([
 ]);
 
 const SUBCOMMAND_MAP = {
+  compiler: runCompiler,
   artifacts: runArtifacts,
   media: runMedia,
   mcp: runMcp,
@@ -10077,3 +10078,110 @@ async function runAutomation(args) {
       process.exit(2);
   }
 }
+
+function printCompilerHelp() {
+  console.log(`Usage: od compiler <subcommand> [flags]
+
+Subcommands:
+  targets                                List all registered target adapters
+  compile                                Run the compilation pipeline for a target
+
+Flags:
+  --project <path>                      Root directory of the project containing application.ir.json
+  --target <targetId>                   Target adapter ID (e.g. html-static)
+  --json                                 Format output as JSON
+`);
+}
+
+async function runCompiler(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    printCompilerHelp();
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: ['project', 'target'], boolean: ['json'] });
+  const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
+
+  switch (sub) {
+    case 'targets': {
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/compiler/targets`);
+      } catch (err) {
+        console.error(`Failed to connect to daemon at ${base}:`, err);
+        process.exit(3);
+      }
+      if (!resp.ok) {
+        console.error(`Failed to list targets: ${resp.status} ${await resp.text()}`);
+        process.exit(1);
+      }
+      const data = await resp.json();
+      if (flags.json) {
+        process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+        return;
+      }
+      for (const t of data) {
+        console.log(`${t.id}@${t.version} (${t.kind})`);
+        console.log(`  Features: ${t.features.join(', ') || 'none'}`);
+        console.log(`  Limitations: ${t.limitations.join(', ') || 'none'}`);
+      }
+      return;
+    }
+    case 'compile': {
+      const projectRoot = flags.project || process.cwd();
+      const targetId = flags.target;
+      if (!targetId) {
+        console.error('Error: --target <targetId> is required.');
+        process.exit(2);
+      }
+      let resp;
+      try {
+        resp = await fetch(`${base}/api/compiler/runs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectRoot, targetId }),
+        });
+      } catch (err) {
+        console.error(`Failed to connect to daemon at ${base}:`, err);
+        process.exit(3);
+      }
+      if (!resp.ok) {
+        console.error(`Failed to start compile: ${resp.status} ${await resp.text()}`);
+        process.exit(1);
+      }
+      const startRes = await resp.json();
+      const runId = startRes.runId;
+
+      let status = startRes.status;
+      while (status.status !== 'succeeded' && status.status !== 'failed' && status.status !== 'cancelled') {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const pollResp = await fetch(`${base}/api/compiler/runs/${runId}`);
+        if (pollResp.ok) {
+          status = await pollResp.json();
+          if (!flags.json) {
+            console.log(`[${status.phase}] status=${status.status} progress=${status.progress}%`);
+          }
+        }
+      }
+
+      if (flags.json) {
+        process.stdout.write(JSON.stringify(status, null, 2) + '\n');
+      } else {
+        console.log(`Compilation finished with status: ${status.status}`);
+        if (status.status === 'failed') {
+          for (const diag of status.diagnostics || []) {
+            console.error(`[${diag.severity.toUpperCase()}] ${diag.message} (${diag.code})`);
+          }
+          process.exit(1);
+        }
+      }
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od compiler ${sub}`);
+      printCompilerHelp();
+      process.exit(2);
+  }
+}
+

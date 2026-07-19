@@ -63,8 +63,12 @@ User uploads a screenshot, brand guide PDF, or Figma link. OD runs `design-syste
 ### S5 — "Let the design agent evolve"
 User connects sources such as GitHub, Notion, Drive, Slack, or a local folder, then picks an Automation template like "Ingest into memory tree," "Extract design system," or "Crystallize this run into a skill." OD canonicalizes the source, optionally compresses it, proposes memory / skill / design-system changes, and only applies them after the configured review policy. Future agent runs consume those accepted nodes automatically.
 
-The first four scenarios map 1:1 to the four modes in [`modes.md`](modes.md).
-The fifth is the cross-product loop described in [`automation-self-evolution.md`](../specs/current/automation-self-evolution.md).
+### S6 — "Compile this design into a real application"
+User (or an agent) has an `application.ir.json` that describes the application's domain, capabilities, API boundary, persistence layer, and frontend screens. They invoke `od compiler compile --project ./my-app --target react-vite`. The compiler validates the IR, runs a 9-pass pipeline, and writes a production-buildable React + Vite project. No guessing: authorization requirements and financial logic that cannot be auto-implemented are surfaced as unresolved items before any code is written, not discovered after the build fails. The same IR can be retargeted to Next.js, SvelteKit, or a SQLite persistence layer without any manual re-interpretation.
+
+The first five scenarios map 1:1 to the five modes in [`modes.md`](modes.md).
+The sixth is the Application Compiler described in [`architecture.md`](architecture.md) §12.
+
 
 ## 5. High-level modules
 
@@ -100,6 +104,7 @@ Module responsibilities:
 - **Memory / evolution store** — editable Markdown-backed memory tree exposed through Settings, `/api/memory/tree`, and `od memory tree`; accepted tree nodes feed future daemon and BYOK/API-mode agent prompts, and accepted proposals can write reviewed memory, skill, and design-system drafts into user-owned runtime roots.
 - **Preview renderer** — sandboxed iframe with vendored React + Babel for JSX artifacts; plain iframe for HTML; PDF via the daemon's headless Chrome.
 - **Export pipeline** — HTML (inlined), PDF, PPTX, ZIP, Markdown.
+- **Application Compiler** — translates a semantic IR (`application.ir.json`) into framework-native runnable target code via a 9-pass pipeline; supports 7 built-in targets (`html-static`, `react-vite`, `nextjs-app`, `sveltekit`, `mock-local`, `next-server-actions`, `sqlite-better-sqlite3`); exposes `/api/compiler/runs`, `/api/compiler/targets`, `od compiler compile`, and MCP tools `compiler_targets` / `compiler_compile`. See [`architecture.md`](architecture.md) §12 for the full boundary contract.
 
 ## 6. Non-goals
 

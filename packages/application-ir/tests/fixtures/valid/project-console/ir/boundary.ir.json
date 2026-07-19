@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "project-console",
+  "operations": [
+    {
+      "id": "projects.list",
+      "capability": "projects.list",
+      "input": "project-filter",
+      "output": "project-page",
+      "errors": ["UNAUTHORIZED", "SERVICE_UNAVAILABLE"]
+    },
+    {
+      "id": "projects.create",
+      "capability": "projects.create",
+      "input": "create-project-input",
+      "output": "project",
+      "errors": ["PROJECT_NAME_CONFLICT", "UNAUTHORIZED", "VALIDATION_FAILED"],
+      "idempotencyKey": "required"
+    }
+  ],
+  "schemas": [
+    {
+      "id": "create-project-input",
+      "kind": "object",
+      "fields": [
+        { "id": "name", "type": "string", "required": true }
+      ]
+    },
+    {
+      "id": "project-filter",
+      "kind": "object",
+      "fields": [
+        { "id": "status", "type": "string", "required": false }
+      ]
+    },
+    {
+      "id": "project-page",
+      "kind": "object",
+      "fields": [
+        { "id": "items", "type": "array", "required": true },
+        { "id": "total", "type": "integer", "required": true }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "PROJECT_NAME_CONFLICT",
+      "presentationHint": "field",
+      "field": "name"
+    }
+  ],
+  "subscriptions": [],
+  "versioningPolicy": "compatible-additive"
+}

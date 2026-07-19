@@ -1,0 +1,145 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "project-console",
+  "routes": [
+    {
+      "id": "route.projects",
+      "path": "/projects",
+      "screen": "screen.projects"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.projects",
+      "rootNode": "semantic.projects-dashboard"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.projects-dashboard",
+      "level": "semantic",
+      "kind": "dashboard",
+      "slots": {
+        "content": ["component.project-list", "component.create-project-form"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "wide"
+      },
+      "responsive": {
+        "phone": "stack",
+        "desktop": "grid"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.projects-dashboard"
+    },
+    {
+      "id": "component.project-list",
+      "level": "component",
+      "kind": "list",
+      "slots": {},
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.project-list"
+    },
+    {
+      "id": "component.create-project-form",
+      "level": "component",
+      "kind": "form",
+      "slots": {
+        "fields": ["atomic.project-name"],
+        "actions": ["atomic.create-project"]
+      },
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "submit",
+          "operation": "projects.create",
+          "input": {
+            "name": "atomic.project-name.value"
+          }
+        }
+      ],
+      "states": ["idle", "submitting", "success", "validation-error", "service-error"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Create project"
+      },
+      "sourceRef": "brief.create-project"
+    },
+    {
+      "id": "atomic.project-name",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Project name",
+        "required": true
+      },
+      "sourceRef": "domain.project.name"
+    },
+    {
+      "id": "atomic.create-project",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "submit-nearest-form"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Create project"
+      },
+      "sourceRef": "capability.projects.create"
+    }
+  ],
+  "flows": [],
+  "localState": [],
+  "operationBindings": [
+    {
+      "node": "component.create-project-form",
+      "operation": "projects.create"
+    }
+  ],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg",
+    "--muted",
+    "--border",
+    "--accent"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

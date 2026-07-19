@@ -43,7 +43,8 @@ export type ArtifactProvenanceArtifactKind =
   | 'design-system'
   | 'code-diff'
   | 'production-app'
-  | 'asset-pack';
+  | 'asset-pack'
+  | 'application-ir';
 
 export type ArtifactProvenanceRenderKind =
   | 'html'
@@ -53,7 +54,9 @@ export type ArtifactProvenanceRenderKind =
   | 'video'
   | 'image'
   | 'diff'
-  | 'repo';
+  | 'repo'
+  | 'json';
+
 
 export type ArtifactProvenanceHandoffKind =
   | 'design-only'

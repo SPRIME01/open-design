@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "marketing-site",
+  "aggregates": [],
+  "repositories": [],
+  "relations": [],
+  "indexes": [],
+  "uniqueness": [],
+  "retention": [],
+  "deletionPolicies": [],
+  "concurrency": [],
+  "migrationIntent": []
+}

@@ -19,7 +19,10 @@ This file is the single source of truth for agents entering this repository. Rea
 - `apps/daemon` is the local privileged daemon and `od` bin. It owns `/api/*`, agent spawning, skills, design systems, artifacts, and static serving.
 - `apps/desktop` is the Electron shell; it discovers the web URL through sidecar IPC.
 - `apps/packaged` is the thin packaged Electron runtime entry; it starts packaged sidecars and owns the `od://` entry glue only.
-- `packages/contracts` is the pure TypeScript web/daemon app contract layer.
+- `packages/contracts` is the pure TypeScript web/daemon app contract layer. It now exports compiler DTOs from `src/api/compiler.ts` — keep it free of runtime dependencies.
+- `packages/application-ir` is the versioned ApplicationIR schema, Zod validation, ID normalization, collision resolution, and semantic hashing. Pure TypeScript, no Node APIs.
+- `packages/application-compiler` is the 9-pass compiler pipeline (validate, resolve, normalize, lower, plan, project, write, verify), compile plan builders, manifest representations, and adapter registry. Pure TypeScript, depends only on `@open-design/application-ir`.
+- `packages/application-targets` is the built-in target adapter library: `html-static`, `react-vite`, `nextjs-app`, `sveltekit`, `mock-local`, `next-server-actions`, and `sqlite-better-sqlite3`. Each adapter implements the `TargetAdapter` interface from `@open-design/application-compiler`.
 - `packages/sidecar-proto` owns the Open Design sidecar business protocol; `packages/sidecar` owns the generic sidecar runtime; `packages/platform` owns generic OS process primitives.
 - `tools/dev` is the local development lifecycle control plane.
 - `tools/pack` is the local packaged build/start/stop/logs control plane, packaged updater harness, installer identity/registry validation surface, and mac beta release artifact preparation surface.
@@ -181,7 +184,7 @@ Every user-facing capability must be reachable through both the web UI **and** t
 - The CLI form must support `--json` for machine-readable output and accept long-form prompts via `--prompt-file <path|->`, so jobs that pipe through `xargs`, `jq`, and `<heredoc` stay clean.
 - Adding a new capability is a three-step closure: HTTP endpoint in `apps/daemon/src/*-routes.ts` (with a contract type in `packages/contracts/src/api/`), UI surface in `apps/web/src/`, and `od <capability>` subcommand in `apps/daemon/src/cli.ts` registered through `SUBCOMMAND_MAP`. Land all three in the same PR; do not stage them across PRs.
 - The PR template's Surface area checklist must reflect *both* surfaces. If you ticked UI, tick CLI too — and vice-versa — or explain in the PR body why the missing surface is genuinely not applicable (e.g. an internal-only daemon health probe). "I'll do the CLI later" is not a valid reason.
-- Existing reference points: `od automation …` mirrors the Automations tab against `/api/routines`; `od plugin …`, `od ui …`, `od project …`, `od media …`, `od mcp …`, `od research …` follow the same shape. Copy that pattern for new capabilities.
+- Existing reference points: `od automation …` mirrors the Automations tab against `/api/routines`; `od plugin …`, `od ui …`, `od project …`, `od media …`, `od mcp …`, `od research …`, `od compiler …` follow the same shape. Copy that pattern for new capabilities.
 
 ## Git commit policy
 
