@@ -1,7 +1,11 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@/playwright/suite';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+// Evidence test for the Application Compiler. It asserts against a manually
+// pre-compiled project under `.tmp/my-test-project` and a daemon listening on
+// OD_DAEMON_URL, so it is opt-in (`OD_COMPILER_E2E=1`) and skipped in CI.
+const evidenceEnabled = process.env.OD_COMPILER_E2E === '1';
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const tempProjectDir = path.join(repoRoot, '.tmp/my-test-project');
@@ -9,6 +13,8 @@ const evidenceDir = path.join(repoRoot, '.agents/evidence/application-compiler-e
 const screenshotDir = path.join(evidenceDir, 'screenshots');
 
 test.describe('Open Design Application Compiler E2E Verification', () => {
+  test.skip(!evidenceEnabled, 'set OD_COMPILER_E2E=1 after a manual `od compiler compile` evidence run');
+
   test.beforeAll(() => {
     fs.mkdirSync(screenshotDir, { recursive: true });
   });

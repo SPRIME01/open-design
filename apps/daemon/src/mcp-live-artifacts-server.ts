@@ -151,7 +151,7 @@ function endpoint(baseUrl: URL, pathname: string): string {
   return url.toString();
 }
 
-async function requestJson(pathname: string, init: RequestInit = {}): Promise<unknown> {
+async function requestJson<T = unknown>(pathname: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(endpoint(daemonUrl(), pathname), {
     ...init,
     headers: {
@@ -175,7 +175,7 @@ async function requestJson(pathname: string, init: RequestInit = {}): Promise<un
     (error as Error & { details?: unknown }).details = body;
     throw error;
   }
-  return body;
+  return body as T;
 }
 
 async function callTool(name: string, args: JsonObject): Promise<unknown> {

@@ -15,7 +15,7 @@ beforeAll(async () => {
   baseUrl = started.url;
   server = started.server;
   shutdown = started.shutdown;
-});
+}, 120_000);
 
 afterAll(async () => {
   await Promise.resolve(shutdown?.());

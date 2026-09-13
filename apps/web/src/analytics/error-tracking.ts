@@ -33,12 +33,67 @@
 // `capture_exceptions: false` on the posthog-js init — this module is the
 // single source of truth for browser exception capture.
 
+import {
+  EVENT_SCHEMA_VERSION,
+  type AnalyticsClientType,
+} from '@open-design/contracts/analytics';
 import { scrubExceptionList, scrubFilePath } from './scrub';
+
+export type BrowserOsName =
+  | 'Mac OS X'
+  | 'Windows'
+  | 'Linux'
+  | 'Android'
+  | 'iOS'
+  | 'Chrome OS'
+  | 'unknown';
+
+interface BrowserOsSignals {
+  platform?: string;
+  userAgent?: string;
+  userAgentDataPlatform?: string;
+  maxTouchPoints?: number;
+}
+
+/** Keep direct-fetch telemetry on the same low-cardinality OS vocabulary as PostHog. */
+export function classifyBrowserOsName(signals: BrowserOsSignals): BrowserOsName {
+  const platform = `${signals.userAgentDataPlatform ?? ''} ${signals.platform ?? ''}`.toLowerCase();
+  const userAgent = (signals.userAgent ?? '').toLowerCase();
+  const combined = `${platform} ${userAgent}`;
+
+  if (combined.includes('android')) return 'Android';
+  if (
+    /iphone|ipad|ipod/u.test(combined)
+    || (platform.includes('mac') && (signals.maxTouchPoints ?? 0) > 1)
+  ) {
+    return 'iOS';
+  }
+  if (/windows|win32|win64/u.test(combined)) return 'Windows';
+  if (/macintosh|mac os|macintel|darwin/u.test(combined)) return 'Mac OS X';
+  if (/cros|chrome os/u.test(combined)) return 'Chrome OS';
+  if (/linux|x11/u.test(combined)) return 'Linux';
+  return 'unknown';
+}
+
+export function detectBrowserOsName(): BrowserOsName {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const navigatorWithUaData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  return classifyBrowserOsName({
+    platform: navigator.platform,
+    userAgent: navigator.userAgent,
+    userAgentDataPlatform: navigatorWithUaData.userAgentData?.platform,
+    maxTouchPoints: navigator.maxTouchPoints,
+  });
+}
 
 interface ExceptionTrackingContext {
   apiKey: string;
   host: string;
   distinctId: string;
+  clientType: AnalyticsClientType;
+  osName: BrowserOsName;
   appVersion?: string;
   sessionId?: string;
   telemetryEnv?: string;
@@ -98,7 +153,7 @@ export function installErrorHandlers(): void {
   installed = true;
 
   window.addEventListener('error', (event) => {
-    captureException(event.error, event.message ?? 'Uncaught error', {
+    captureException(event.error, event.message || 'Uncaught error', {
       filename: typeof event.filename === 'string' ? event.filename : undefined,
       lineno: typeof event.lineno === 'number' ? event.lineno : undefined,
       colno: typeof event.colno === 'number' ? event.colno : undefined,
@@ -117,7 +172,7 @@ export function installErrorHandlers(): void {
 // want it visible in PostHog (e.g. an ErrorBoundary's componentDidCatch).
 // Unhandled errors go through the window listeners above.
 export function reportHandledException(error: unknown, message?: string): void {
-  captureException(error, message ?? defaultMessage(error), { handled: true });
+  captureException(error, message || defaultMessage(error), { handled: true });
 }
 
 interface CaptureMetadata {
@@ -208,10 +263,14 @@ function captureException(
 export function reportSafetyEvent(
   eventName: string,
   properties: Record<string, unknown> = {},
+  options: { currentUrlOverride?: string } = {},
 ): void {
   const merged: Record<string, unknown> = {
     ...properties,
-    $current_url: scrubUrl(typeof window !== 'undefined' ? window.location.href : ''),
+    $current_url: scrubUrl(
+      options.currentUrlOverride
+        ?? (typeof window !== 'undefined' ? window.location.href : ''),
+    ),
     $insert_id: randomId(),
     capture_source: 'web/error-tracking',
   };
@@ -241,7 +300,13 @@ function dispatch(item: BufferedSafetyEvent): void {
     distinct_id: context.distinctId,
     properties: {
       ...item.body.properties,
+      // Keep the direct-fetch web safety envelope aligned with daemon and
+      // packaged-runtime telemetry. Stamp this after caller properties so a
+      // stale producer cannot accidentally override the canonical version.
+      event_schema_version: EVENT_SCHEMA_VERSION,
       $lib: 'web/error-tracking',
+      $os: context.osName,
+      client_type: context.clientType,
       ...(context.telemetryEnv ? { env: context.telemetryEnv } : {}),
       ...(context.appVersion ? { app_version: context.appVersion, ui_version: context.appVersion } : {}),
       ...(context.sessionId ? { session_id: context.sessionId } : {}),
@@ -344,12 +409,19 @@ function buildExceptionList(
   metadata: CaptureMetadata,
 ): Array<Record<string, unknown>> {
   const isError = error instanceof Error;
-  const type = isError ? error.name : typeof error === 'string' ? 'Error' : 'NonError';
-  const value = isError
-    ? error.message
-    : typeof error === 'string'
-      ? error
-      : fallbackMessage;
+  // Every branch below must yield a NON-EMPTY type and value. An empty string
+  // here ships an exception PostHog cannot type or group — in production 70
+  // events on the current release carried neither. `error.name` can be '' when
+  // a minifier mangles a `this.name = new.target.name` subclass, and
+  // `error.message` is '' for a bare `new Error()`.
+  const type =
+    (isError ? error.name : typeof error === 'string' ? 'Error' : 'NonError') || 'Error';
+  const value =
+    (isError
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : fallbackMessage) || fallbackMessage || 'Unknown error';
   const stack = isError && typeof error.stack === 'string' ? error.stack : '';
   const chunkIds = getFilenameToChunkIdMap();
   // Stamp `platform` on every frame. PostHog's exception ingestion treats
@@ -395,22 +467,47 @@ function buildExceptionList(
 const STACK_RE_V8 = /^\s*at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)\)?$/;
 const STACK_RE_SPIDERMONKEY = /^(.*?)@(.+?):(\d+):(\d+)$/;
 
+/**
+ * Never ship a zero-frame stacktrace.
+ *
+ * PostHog derives `$exception_types` / `$exception_values` from
+ * `$exception_list` during ingestion and skips entries that fail frame-level
+ * validation, so an empty `frames` array is how an exception lands with neither
+ * field set — the `Error` row with no value in the stability report.
+ *
+ * The guard runs on the PARSED result, not on the raw string: a header-only
+ * stack (`"Error: Script error."`) is truthy yet yields no frames, because the
+ * first line is dropped as a message rather than a frame. Checking the input
+ * only would let exactly that case through.
+ */
 function parseStack(stack: string, metadata: CaptureMetadata): Array<Record<string, unknown>> {
-  if (!stack) {
-    if (metadata.filename) {
-      return [
-        {
-          function: '<anonymous>',
-          filename: metadata.filename,
-          abs_path: metadata.filename,
-          lineno: metadata.lineno ?? 0,
-          colno: metadata.colno ?? 0,
-          in_app: true,
-        },
-      ];
-    }
-    return [];
+  const parsed = stack ? parseStackFrames(stack) : [];
+  if (parsed.length > 0) return parsed;
+  if (metadata.filename) {
+    return [
+      {
+        function: '<anonymous>',
+        filename: metadata.filename,
+        abs_path: metadata.filename,
+        lineno: metadata.lineno ?? 0,
+        colno: metadata.colno ?? 0,
+        in_app: true,
+      },
+    ];
   }
+  return [
+    {
+      function: '<unknown>',
+      filename: '<no stack>',
+      abs_path: '<no stack>',
+      lineno: metadata.lineno ?? 0,
+      colno: metadata.colno ?? 0,
+      in_app: true,
+    },
+  ];
+}
+
+function parseStackFrames(stack: string): Array<Record<string, unknown>> {
   const lines = stack.split('\n');
   // The first line is usually the message (e.g. "TypeError: foo is not a
   // function") rather than a frame — skip it when it doesn't start with
