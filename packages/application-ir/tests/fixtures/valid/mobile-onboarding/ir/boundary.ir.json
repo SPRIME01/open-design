@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "mobile-onboarding",
+  "operations": [
+    {
+      "id": "onboarding.status",
+      "capability": "onboarding.status",
+      "input": "void",
+      "output": "onboarding-state",
+      "errors": ["UNAUTHORIZED"]
+    },
+    {
+      "id": "onboarding.complete",
+      "capability": "onboarding.complete",
+      "input": "complete-onboarding-input",
+      "output": "void",
+      "errors": ["VALIDATION_FAILED", "UNAUTHORIZED"]
+    }
+  ],
+  "schemas": [
+    {
+      "id": "complete-onboarding-input",
+      "kind": "object",
+      "fields": [
+        { "id": "accepted-terms", "type": "boolean", "required": true }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "VALIDATION_FAILED",
+      "presentationHint": "field",
+      "field": "accepted-terms"
+    }
+  ],
+  "subscriptions": [],
+  "versioningPolicy": "compatible-additive"
+}

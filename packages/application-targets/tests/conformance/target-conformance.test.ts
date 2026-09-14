@@ -11,15 +11,15 @@ describe("Target conformance tests for all frontend targets", () => {
     registerAllBuiltInAdapters();
   });
 
-  const runTargetTest = async (adapterId: string) => {
-    const projectConsoleDir = path.join(fixturesDir, "valid", "project-console");
-    
-    const bundleRaw = JSON.parse(fs.readFileSync(path.join(projectConsoleDir, "application.ir.json"), "utf8"));
-    const domainRaw = JSON.parse(fs.readFileSync(path.join(projectConsoleDir, "ir", "domain.ir.json"), "utf8"));
-    const capabilitiesRaw = JSON.parse(fs.readFileSync(path.join(projectConsoleDir, "ir", "capabilities.ir.json"), "utf8"));
-    const boundaryRaw = JSON.parse(fs.readFileSync(path.join(projectConsoleDir, "ir", "boundary.ir.json"), "utf8"));
-    const persistenceRaw = JSON.parse(fs.readFileSync(path.join(projectConsoleDir, "ir", "persistence.ir.json"), "utf8"));
-    const frontendRaw = JSON.parse(fs.readFileSync(path.join(projectConsoleDir, "ir", "frontend.ir.json"), "utf8"));
+  const runTargetTest = async (adapterId: string, fixtureName = "project-console") => {
+    const fixtureDir = path.join(fixturesDir, "valid", fixtureName);
+
+    const bundleRaw = JSON.parse(fs.readFileSync(path.join(fixtureDir, "application.ir.json"), "utf8"));
+    const domainRaw = JSON.parse(fs.readFileSync(path.join(fixtureDir, "ir", "domain.ir.json"), "utf8"));
+    const capabilitiesRaw = JSON.parse(fs.readFileSync(path.join(fixtureDir, "ir", "capabilities.ir.json"), "utf8"));
+    const boundaryRaw = JSON.parse(fs.readFileSync(path.join(fixtureDir, "ir", "boundary.ir.json"), "utf8"));
+    const persistenceRaw = JSON.parse(fs.readFileSync(path.join(fixtureDir, "ir", "persistence.ir.json"), "utf8"));
+    const frontendRaw = JSON.parse(fs.readFileSync(path.join(fixtureDir, "ir", "frontend.ir.json"), "utf8"));
 
     const config = {
       schemaVersion: 1,
@@ -51,6 +51,7 @@ describe("Target conformance tests for all frontend targets", () => {
     expect(res.status).toBe("succeeded");
     expect(res.fileSet).toBeDefined();
     expect(res.fileSet?.files.length).toBeGreaterThan(0);
+    expect((res.plan?.creates ?? []).length).toBeGreaterThan(0);
   };
 
   it("conforms react-vite adapter", async () => {
@@ -64,4 +65,18 @@ describe("Target conformance tests for all frontend targets", () => {
   it("conforms sveltekit adapter", async () => {
     await runTargetTest("sveltekit");
   });
+
+  // The same conformance contract must hold for the richer variation
+  // fixtures: a multi-screen flow app (mobile-onboarding) and an
+  // auth-flavored app with authorization-bearing capabilities (auth-settings).
+  const frontendAdapters = ["react-vite", "nextjs-app", "sveltekit"] as const;
+  const variationFixtures = ["auth-settings", "mobile-onboarding"] as const;
+
+  for (const adapterId of frontendAdapters) {
+    for (const fixtureName of variationFixtures) {
+      it(`conforms ${adapterId} adapter for ${fixtureName}`, async () => {
+        await runTargetTest(adapterId, fixtureName);
+      });
+    }
+  }
 });

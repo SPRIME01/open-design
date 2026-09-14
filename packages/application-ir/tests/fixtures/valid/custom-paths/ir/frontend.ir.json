@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "custom-paths",
+  "routes": [
+    {
+      "id": "route.home",
+      "path": "/",
+      "screen": "screen.home"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.home",
+      "rootNode": "semantic.intro"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.intro",
+      "level": "semantic",
+      "kind": "landing",
+      "slots": {
+        "content": ["component.intro"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.intro"
+    },
+    {
+      "id": "component.intro",
+      "level": "component",
+      "kind": "card",
+      "slots": {
+        "content": ["atomic.intro-title", "atomic.intro-copy"],
+        "actions": ["atomic.intro-cta"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.intro"
+    },
+    {
+      "id": "atomic.intro-title",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "large"
+      },
+      "responsive": {},
+      "accessibility": {
+        "headingLevel": 2
+      },
+      "sourceRef": "brief.intro"
+    },
+    {
+      "id": "atomic.intro-copy",
+      "level": "atomic",
+      "kind": "text",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "tone": "muted"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.intro"
+    },
+    {
+      "id": "atomic.intro-cta",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "navigate-next"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Learn more"
+      },
+      "sourceRef": "brief.intro"
+    }
+  ],
+  "flows": [],
+  "localState": [],
+  "operationBindings": [],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

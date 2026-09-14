@@ -7,8 +7,31 @@ import {
   capabilityIRSchema,
   boundaryIRSchema,
   persistenceIRSchema,
-  frontendIRSchema
+  frontendIRSchema,
+  projectionConfigSchema
 } from "../src/schemas/index.js";
+
+function readFixtureModule(fixtureDir: string, rel: string): any {
+  return JSON.parse(fs.readFileSync(path.join(fixtureDir, rel), "utf8"));
+}
+
+function expectValidFixtureIR(fixtureName: string) {
+  const fixtureDir = path.join(fixturesDir, "valid", fixtureName);
+
+  const bundleRaw = readFixtureModule(fixtureDir, "application.ir.json");
+  const domainRaw = readFixtureModule(fixtureDir, "ir/domain.ir.json");
+  const capabilitiesRaw = readFixtureModule(fixtureDir, "ir/capabilities.ir.json");
+  const boundaryRaw = readFixtureModule(fixtureDir, "ir/boundary.ir.json");
+  const persistenceRaw = readFixtureModule(fixtureDir, "ir/persistence.ir.json");
+  const frontendRaw = readFixtureModule(fixtureDir, "ir/frontend.ir.json");
+
+  expect(applicationIRBundleSchema.safeParse(bundleRaw).success).toBe(true);
+  expect(domainIRSchema.safeParse(domainRaw).success).toBe(true);
+  expect(capabilityIRSchema.safeParse(capabilitiesRaw).success).toBe(true);
+  expect(boundaryIRSchema.safeParse(boundaryRaw).success).toBe(true);
+  expect(persistenceIRSchema.safeParse(persistenceRaw).success).toBe(true);
+  expect(frontendIRSchema.safeParse(frontendRaw).success).toBe(true);
+}
 
 const fixturesDir = path.join(import.meta.dirname, "fixtures");
 
@@ -47,6 +70,28 @@ describe("IR schema parsing tests", () => {
     expect(boundaryIRSchema.safeParse(boundaryRaw).success).toBe(true);
     expect(persistenceIRSchema.safeParse(persistenceRaw).success).toBe(true);
     expect(frontendIRSchema.safeParse(frontendRaw).success).toBe(true);
+  });
+
+  it("parses the valid mobile-onboarding fixture successfully", () => {
+    expectValidFixtureIR("mobile-onboarding");
+  });
+
+  it("parses the valid auth-settings fixture successfully", () => {
+    expectValidFixtureIR("auth-settings");
+  });
+
+  it("parses the valid two-design-systems fixture and its projection config successfully", () => {
+    expectValidFixtureIR("two-design-systems");
+
+    const configRaw = readFixtureModule(path.join(fixturesDir, "valid", "two-design-systems"), "projection.config.json");
+    expect(projectionConfigSchema.safeParse(configRaw).success).toBe(true);
+  });
+
+  it("parses the valid custom-paths fixture and its projection config successfully", () => {
+    expectValidFixtureIR("custom-paths");
+
+    const configRaw = readFixtureModule(path.join(fixturesDir, "valid", "custom-paths"), "projection.config.json");
+    expect(projectionConfigSchema.safeParse(configRaw).success).toBe(true);
   });
 
   it("rejects invalid ID format", () => {

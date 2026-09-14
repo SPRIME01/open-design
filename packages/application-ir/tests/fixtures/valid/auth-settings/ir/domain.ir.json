@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "auth-settings",
+  "entities": [
+    {
+      "id": "user-account",
+      "identity": "user-account.id",
+      "fields": [
+        { "id": "user-account.id", "type": "uuid", "generated": true },
+        { "id": "user-account.email", "type": "string", "minLength": 5, "maxLength": 254 },
+        { "id": "user-account.display-name", "type": "string", "minLength": 1, "maxLength": 80 },
+        { "id": "user-account.status", "type": "account-status", "default": "active" },
+        { "id": "user-account.version", "type": "integer", "default": 1 }
+      ],
+      "invariants": [
+        "user-account.email-is-stored-lowercase",
+        "user-account.suspended-cannot-login"
+      ]
+    }
+  ],
+  "enums": [
+    {
+      "id": "account-status",
+      "values": ["active", "suspended", "disabled"]
+    }
+  ],
+  "valueObjects": [],
+  "scalarTypes": [],
+  "invariants": [
+    {
+      "id": "user-account.email-is-stored-lowercase",
+      "description": "Email addresses are normalized to lowercase before persistence."
+    },
+    {
+      "id": "user-account.suspended-cannot-login",
+      "description": "Suspended accounts cannot open a new session."
+    }
+  ],
+  "stateMachines": [
+    {
+      "id": "account-lifecycle",
+      "states": ["active", "suspended", "disabled"],
+      "transitions": [
+        { "id": "user-account.suspend", "from": ["active"], "to": "suspended" },
+        { "id": "user-account.disable", "from": ["active", "suspended"], "to": "disabled" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "mobile-onboarding",
+  "queries": [
+    {
+      "id": "onboarding.status",
+      "input": "void",
+      "output": "onboarding-state",
+      "authorization": "onboarding.read",
+      "errors": ["UNAUTHORIZED"]
+    }
+  ],
+  "commands": [
+    {
+      "id": "onboarding.complete",
+      "input": "complete-onboarding-input",
+      "output": "void",
+      "transactional": true,
+      "idempotency": "none",
+      "authorization": "onboarding.complete",
+      "preconditions": [],
+      "effects": [
+        { "kind": "update", "entity": "onboarding-state" },
+        { "kind": "emit", "event": "onboarding-completed" }
+      ],
+      "errors": ["VALIDATION_FAILED", "UNAUTHORIZED"]
+    }
+  ],
+  "events": [
+    {
+      "id": "onboarding-completed",
+      "payload": "onboarding-state",
+      "ordering": "none",
+      "replay": "not-required",
+      "criticality": "advisory"
+    }
+  ],
+  "workflows": [],
+  "authorizationCapabilities": ["onboarding.read", "onboarding.complete"],
+  "errorCatalog": [
+    { "id": "VALIDATION_FAILED", "recoverable": true },
+    { "id": "UNAUTHORIZED", "recoverable": true }
+  ]
+}

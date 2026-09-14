@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "auth-settings",
+  "name": "Auth Settings",
+  "modules": {
+    "domain": "ir/domain.ir.json",
+    "capabilities": "ir/capabilities.ir.json",
+    "boundary": "ir/boundary.ir.json",
+    "persistence": "ir/persistence.ir.json",
+    "frontend": "ir/frontend.ir.json"
+  },
+  "source": {
+    "projectId": "auth-settings",
+    "runId": "run-example",
+    "parentBundleHash": null
+  }
+}

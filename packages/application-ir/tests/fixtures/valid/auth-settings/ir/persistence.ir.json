@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "auth-settings",
+  "aggregates": [
+    {
+      "id": "user-account",
+      "rootEntity": "user-account",
+      "transactionBoundary": true
+    }
+  ],
+  "repositories": [
+    {
+      "id": "user-account-repository",
+      "aggregate": "user-account",
+      "operations": ["get", "update"]
+    }
+  ],
+  "relations": [],
+  "indexes": [
+    {
+      "id": "user-account-status",
+      "entity": "user-account",
+      "fields": ["status"],
+      "unique": false
+    }
+  ],
+  "uniqueness": [
+    {
+      "id": "user-account-email",
+      "entity": "user-account",
+      "fields": ["email"]
+    }
+  ],
+  "retention": [],
+  "deletionPolicies": [
+    {
+      "entity": "user-account",
+      "mode": "soft"
+    }
+  ],
+  "concurrency": [
+    {
+      "aggregate": "user-account",
+      "strategy": "optimistic",
+      "versionField": "version"
+    }
+  ],
+  "migrationIntent": []
+}

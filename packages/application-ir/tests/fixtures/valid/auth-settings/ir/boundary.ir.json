@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "auth-settings",
+  "operations": [
+    {
+      "id": "session.login",
+      "capability": "session.login",
+      "input": "login-input",
+      "output": "session-info",
+      "errors": ["UNAUTHORIZED", "VALIDATION_FAILED"]
+    },
+    {
+      "id": "session.logout",
+      "capability": "session.logout",
+      "input": "void",
+      "output": "void",
+      "errors": ["FORBIDDEN"]
+    },
+    {
+      "id": "session.whoami",
+      "capability": "session.whoami",
+      "input": "void",
+      "output": "session-info",
+      "errors": ["UNAUTHORIZED"]
+    },
+    {
+      "id": "account.profile",
+      "capability": "account.profile",
+      "input": "void",
+      "output": "user-account",
+      "errors": ["UNAUTHORIZED", "FORBIDDEN"]
+    },
+    {
+      "id": "account.update-profile",
+      "capability": "account.update-profile",
+      "input": "update-profile-input",
+      "output": "user-account",
+      "errors": ["UNAUTHORIZED", "FORBIDDEN", "VALIDATION_FAILED"]
+    }
+  ],
+  "schemas": [
+    {
+      "id": "login-input",
+      "kind": "object",
+      "fields": [
+        { "id": "email", "type": "string", "required": true },
+        { "id": "password", "type": "string", "required": true }
+      ]
+    },
+    {
+      "id": "session-info",
+      "kind": "object",
+      "fields": [
+        { "id": "account-id", "type": "string", "required": true },
+        { "id": "display-name", "type": "string", "required": true },
+        { "id": "expires-at", "type": "string", "required": false }
+      ]
+    },
+    {
+      "id": "update-profile-input",
+      "kind": "object",
+      "fields": [
+        { "id": "display-name", "type": "string", "required": true }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "UNAUTHORIZED",
+      "presentationHint": "banner"
+    },
+    {
+      "id": "FORBIDDEN",
+      "presentationHint": "banner"
+    },
+    {
+      "id": "VALIDATION_FAILED",
+      "presentationHint": "field",
+      "field": "email"
+    }
+  ],
+  "subscriptions": [],
+  "versioningPolicy": "compatible-additive"
+}

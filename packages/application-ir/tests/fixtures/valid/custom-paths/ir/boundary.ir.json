@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "custom-paths",
+  "operations": [],
+  "schemas": [],
+  "errors": [],
+  "subscriptions": [],
+  "versioningPolicy": "compatible-additive"
+}

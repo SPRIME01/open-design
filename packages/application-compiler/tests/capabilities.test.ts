@@ -46,7 +46,14 @@ function projectionConfig(outputRoot = "generated/html-target") {
 
 describe("validateApplication", () => {
   it("returns valid=true with zero diagnostics for every valid fixture", () => {
-    for (const fixture of ["marketing-site", "project-console"]) {
+    for (const fixture of [
+      "marketing-site",
+      "project-console",
+      "mobile-onboarding",
+      "auth-settings",
+      "two-design-systems",
+      "custom-paths",
+    ]) {
       const res = validateApplication(loadFixtureInput(fixture));
       expect(res.valid, fixture).toBe(true);
       expect(res.diagnostics, fixture).toEqual([]);

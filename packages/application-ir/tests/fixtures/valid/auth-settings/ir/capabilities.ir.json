@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "auth-settings",
+  "queries": [
+    {
+      "id": "session.whoami",
+      "input": "void",
+      "output": "session-info",
+      "authorization": "session.read",
+      "errors": ["UNAUTHORIZED"]
+    },
+    {
+      "id": "account.profile",
+      "input": "void",
+      "output": "user-account",
+      "authorization": "account.read",
+      "errors": ["UNAUTHORIZED", "FORBIDDEN"]
+    }
+  ],
+  "commands": [
+    {
+      "id": "session.login",
+      "input": "login-input",
+      "output": "session-info",
+      "transactional": false,
+      "idempotency": "none",
+      "authorization": "session.open",
+      "preconditions": [],
+      "effects": [
+        { "kind": "emit", "event": "session-started" }
+      ],
+      "errors": ["UNAUTHORIZED", "VALIDATION_FAILED"]
+    },
+    {
+      "id": "session.logout",
+      "input": "void",
+      "output": "void",
+      "transactional": false,
+      "idempotency": "none",
+      "authorization": "session.close",
+      "preconditions": [],
+      "effects": [
+        { "kind": "emit", "event": "session-ended" }
+      ],
+      "errors": ["FORBIDDEN"]
+    },
+    {
+      "id": "account.update-profile",
+      "input": "update-profile-input",
+      "output": "user-account",
+      "transactional": true,
+      "idempotency": "none",
+      "authorization": "account.write",
+      "preconditions": [],
+      "effects": [
+        { "kind": "update", "entity": "user-account" }
+      ],
+      "errors": ["UNAUTHORIZED", "FORBIDDEN", "VALIDATION_FAILED"]
+    }
+  ],
+  "events": [
+    {
+      "id": "session-started",
+      "payload": "user-account",
+      "ordering": "per-principal",
+      "replay": "not-required",
+      "criticality": "advisory"
+    },
+    {
+      "id": "session-ended",
+      "payload": "user-account",
+      "ordering": "per-principal",
+      "replay": "not-required",
+      "criticality": "advisory"
+    }
+  ],
+  "workflows": [],
+  "authorizationCapabilities": [
+    "session.open",
+    "session.close",
+    "session.read",
+    "account.read",
+    "account.write"
+  ],
+  "errorCatalog": [
+    { "id": "UNAUTHORIZED", "recoverable": true },
+    { "id": "FORBIDDEN", "recoverable": true },
+    { "id": "VALIDATION_FAILED", "recoverable": true }
+  ]
+}

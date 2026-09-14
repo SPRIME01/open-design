@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "application": "application.ir.json",
+  "trust": {
+    "allowCustomAdapters": true
+  },
+  "execution": {
+    "allowInstall": false,
+    "allowVerificationCommands": true
+  },
+  "targets": [
+    {
+      "id": "custom-html",
+      "adapter": "html-static",
+      "mode": "integrate",
+      "outputRoot": "build/web/preview",
+      "frontend": {
+        "adapter": "html-static",
+        "language": "typescript",
+        "router": "none",
+        "styling": "css-custom-properties"
+      },
+      "paths": {
+        "entry": "app/preview/index.html",
+        "assets": "app/preview/assets",
+        "tokens": "app/preview/assets/tokens.css"
+      },
+      "componentRegistry": "registry/components.json",
+      "verification": {
+        "html-lint": true
+      },
+      "capabilityPolicy": "degrade",
+      "conflictPolicy": "plan-only"
+    },
+    {
+      "id": "custom-react",
+      "adapter": "react-vite",
+      "mode": "scaffold",
+      "outputRoot": "build/web/app",
+      "frontend": {
+        "adapter": "react-vite",
+        "language": "typescript",
+        "router": "file-based",
+        "styling": "css-modules"
+      },
+      "paths": {
+        "pages": "src/pages",
+        "components": "src/components",
+        "entry": "src/main.tsx"
+      },
+      "componentRegistry": null,
+      "verification": {
+        "typecheck": true
+      },
+      "conflictPolicy": "block"
+    }
+  ]
+}

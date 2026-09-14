@@ -1,0 +1,180 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "two-design-systems",
+  "routes": [
+    {
+      "id": "route.home",
+      "path": "/",
+      "screen": "screen.home"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.home",
+      "rootNode": "semantic.home"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.home",
+      "level": "semantic",
+      "kind": "landing",
+      "slots": {
+        "content": ["component.hero-aurora", "component.hero-cobalt"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {},
+      "responsive": {
+        "phone": "stack",
+        "desktop": "grid"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.home"
+    },
+    {
+      "id": "component.hero-aurora",
+      "level": "component",
+      "kind": "hero",
+      "slots": {
+        "content": ["atomic.hero-title", "atomic.hero-copy"],
+        "actions": ["atomic.cta-aurora"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {
+        "tokenSet": "aurora",
+        "surfaceToken": "--bg-surface",
+        "textToken": "--fg-primary",
+        "surface": "raised",
+        "density": "comfortable"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.hero"
+    },
+    {
+      "id": "component.hero-cobalt",
+      "level": "component",
+      "kind": "hero",
+      "slots": {
+        "content": ["atomic.hero-title", "atomic.hero-copy"],
+        "actions": ["atomic.cta-cobalt"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {
+        "tokenSet": "cobalt",
+        "surfaceToken": "--surface",
+        "textToken": "--text",
+        "surface": "flat",
+        "density": "compact"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.hero"
+    },
+    {
+      "id": "atomic.hero-title",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "large"
+      },
+      "responsive": {},
+      "accessibility": {
+        "headingLevel": 2
+      },
+      "sourceRef": "brief.hero"
+    },
+    {
+      "id": "atomic.hero-copy",
+      "level": "atomic",
+      "kind": "text",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "tone": "muted"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.hero"
+    },
+    {
+      "id": "atomic.cta-aurora",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "navigate-next"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "tokenSet": "aurora",
+        "colorToken": "--accent-strong",
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Get started (Aurora)"
+      },
+      "sourceRef": "brief.hero"
+    },
+    {
+      "id": "atomic.cta-cobalt",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "navigate-next"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "tokenSet": "cobalt",
+        "colorToken": "--primary",
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Get started (Cobalt)"
+      },
+      "sourceRef": "brief.hero"
+    }
+  ],
+  "flows": [],
+  "localState": [],
+  "operationBindings": [],
+  "tokenReferences": [
+    "--bg-surface",
+    "--fg-primary",
+    "--accent-strong",
+    "--surface",
+    "--text",
+    "--primary"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

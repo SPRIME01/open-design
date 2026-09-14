@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "application": "application.ir.json",
+  "targets": [
+    {
+      "id": "aurora-static",
+      "adapter": "html-static",
+      "mode": "scaffold",
+      "outputRoot": "generated/aurora",
+      "frontend": {
+        "adapter": "html-static",
+        "styling": "tokens-aurora"
+      }
+    },
+    {
+      "id": "cobalt-static",
+      "adapter": "html-static",
+      "mode": "scaffold",
+      "outputRoot": "generated/cobalt",
+      "frontend": {
+        "adapter": "html-static",
+        "styling": "tokens-cobalt"
+      }
+    }
+  ]
+}

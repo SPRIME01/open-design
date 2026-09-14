@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "mobile-onboarding",
+  "aggregates": [
+    {
+      "id": "onboarding-state",
+      "rootEntity": "onboarding-state",
+      "transactionBoundary": true
+    }
+  ],
+  "repositories": [
+    {
+      "id": "onboarding-state-repository",
+      "aggregate": "onboarding-state",
+      "operations": ["get", "update"]
+    }
+  ],
+  "relations": [],
+  "indexes": [],
+  "uniqueness": [],
+  "retention": [],
+  "deletionPolicies": [],
+  "concurrency": [],
+  "migrationIntent": []
+}

@@ -1,0 +1,481 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "mobile-onboarding",
+  "routes": [
+    {
+      "id": "route.welcome",
+      "path": "/welcome",
+      "screen": "screen.welcome"
+    },
+    {
+      "id": "route.credentials",
+      "path": "/credentials",
+      "screen": "screen.credentials"
+    },
+    {
+      "id": "route.permissions",
+      "path": "/permissions",
+      "screen": "screen.permissions"
+    },
+    {
+      "id": "route.done",
+      "path": "/done",
+      "screen": "screen.done"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.welcome",
+      "rootNode": "semantic.welcome"
+    },
+    {
+      "id": "screen.credentials",
+      "rootNode": "semantic.credentials"
+    },
+    {
+      "id": "screen.permissions",
+      "rootNode": "semantic.permissions"
+    },
+    {
+      "id": "screen.done",
+      "rootNode": "semantic.done"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.welcome",
+      "level": "semantic",
+      "kind": "onboarding-step",
+      "slots": {
+        "progress": ["atomic.onboarding-progress"],
+        "content": ["component.welcome-hero"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["active", "inactive"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "narrow"
+      },
+      "responsive": {
+        "phone": "stack"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.welcome"
+    },
+    {
+      "id": "semantic.credentials",
+      "level": "semantic",
+      "kind": "onboarding-step",
+      "slots": {
+        "progress": ["atomic.onboarding-progress"],
+        "content": ["component.credentials-form"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["active", "inactive"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "narrow"
+      },
+      "responsive": {
+        "phone": "stack"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.credentials"
+    },
+    {
+      "id": "semantic.permissions",
+      "level": "semantic",
+      "kind": "onboarding-step",
+      "slots": {
+        "progress": ["atomic.onboarding-progress"],
+        "content": ["component.permission-list"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["active", "inactive"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "narrow"
+      },
+      "responsive": {
+        "phone": "stack"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.permissions"
+    },
+    {
+      "id": "semantic.done",
+      "level": "semantic",
+      "kind": "onboarding-step",
+      "slots": {
+        "progress": ["atomic.onboarding-progress"],
+        "content": ["component.done-summary"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["active", "inactive"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "narrow"
+      },
+      "responsive": {
+        "phone": "stack"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.done"
+    },
+    {
+      "id": "component.welcome-hero",
+      "level": "component",
+      "kind": "hero",
+      "slots": {
+        "content": ["atomic.welcome-title", "atomic.welcome-copy"],
+        "actions": ["atomic.get-started"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.welcome-hero"
+    },
+    {
+      "id": "component.credentials-form",
+      "level": "component",
+      "kind": "form",
+      "slots": {
+        "fields": ["atomic.credentials-email", "atomic.credentials-password"],
+        "actions": ["atomic.credentials-continue"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["idle", "validating", "validation-error"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Account credentials"
+      },
+      "sourceRef": "brief.credentials"
+    },
+    {
+      "id": "component.permission-list",
+      "level": "component",
+      "kind": "list",
+      "slots": {
+        "items": ["atomic.permission-notifications", "atomic.permission-location"],
+        "actions": ["atomic.finish-onboarding"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Required permissions"
+      },
+      "sourceRef": "brief.permissions"
+    },
+    {
+      "id": "component.done-summary",
+      "level": "component",
+      "kind": "card",
+      "slots": {
+        "content": ["atomic.done-title", "atomic.done-copy"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.done"
+    },
+    {
+      "id": "atomic.onboarding-progress",
+      "level": "atomic",
+      "kind": "progress",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["step-1", "step-2", "step-3", "complete"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Onboarding progress"
+      },
+      "sourceRef": "domain.onboarding-state.step"
+    },
+    {
+      "id": "atomic.welcome-title",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "large"
+      },
+      "responsive": {},
+      "accessibility": {
+        "headingLevel": 2
+      },
+      "sourceRef": "brief.welcome"
+    },
+    {
+      "id": "atomic.welcome-copy",
+      "level": "atomic",
+      "kind": "text",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "tone": "muted"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.welcome"
+    },
+    {
+      "id": "atomic.get-started",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "navigate-next"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Get started"
+      },
+      "sourceRef": "brief.welcome"
+    },
+    {
+      "id": "atomic.credentials-email",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Email",
+        "required": true
+      },
+      "sourceRef": "brief.credentials"
+    },
+    {
+      "id": "atomic.credentials-password",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Password",
+        "required": true
+      },
+      "sourceRef": "brief.credentials"
+    },
+    {
+      "id": "atomic.credentials-continue",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "submit-nearest-form"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Continue"
+      },
+      "sourceRef": "brief.credentials"
+    },
+    {
+      "id": "atomic.permission-notifications",
+      "level": "atomic",
+      "kind": "checkbox",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["unchecked", "checked"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Send me notifications",
+        "required": true
+      },
+      "sourceRef": "domain.onboarding-state.accepted-terms"
+    },
+    {
+      "id": "atomic.permission-location",
+      "level": "atomic",
+      "kind": "checkbox",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["unchecked", "checked"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Use my location"
+      },
+      "sourceRef": "brief.permissions"
+    },
+    {
+      "id": "atomic.finish-onboarding",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "operation": "onboarding.complete",
+          "input": {
+            "accepted-terms": "atomic.permission-notifications.value"
+          }
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Finish onboarding"
+      },
+      "sourceRef": "capability.onboarding.complete"
+    },
+    {
+      "id": "atomic.done-title",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "large"
+      },
+      "responsive": {},
+      "accessibility": {
+        "headingLevel": 2
+      },
+      "sourceRef": "brief.done"
+    },
+    {
+      "id": "atomic.done-copy",
+      "level": "atomic",
+      "kind": "text",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "tone": "muted"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "brief.done"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow.onboarding",
+      "entry": "screen.welcome",
+      "steps": [
+        {
+          "from": "screen.welcome",
+          "to": "screen.credentials",
+          "trigger": "activate",
+          "node": "atomic.get-started"
+        },
+        {
+          "from": "screen.credentials",
+          "to": "screen.permissions",
+          "trigger": "activate",
+          "node": "atomic.credentials-continue"
+        },
+        {
+          "from": "screen.permissions",
+          "to": "screen.done",
+          "trigger": "activate",
+          "node": "atomic.finish-onboarding",
+          "operation": "onboarding.complete"
+        }
+      ]
+    }
+  ],
+  "localState": [
+    {
+      "id": "onboarding.current-step",
+      "initial": "welcome"
+    }
+  ],
+  "operationBindings": [
+    {
+      "node": "atomic.finish-onboarding",
+      "operation": "onboarding.complete"
+    }
+  ],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg",
+    "--muted",
+    "--accent",
+    "--progress-track",
+    "--progress-fill"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

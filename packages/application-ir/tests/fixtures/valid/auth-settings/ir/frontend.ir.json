@@ -1,0 +1,384 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "auth-settings",
+  "routes": [
+    {
+      "id": "route.login",
+      "path": "/login",
+      "screen": "screen.login"
+    },
+    {
+      "id": "route.settings",
+      "path": "/settings",
+      "screen": "screen.settings"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.login",
+      "rootNode": "semantic.login-screen"
+    },
+    {
+      "id": "screen.settings",
+      "rootNode": "semantic.settings-screen"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.login-screen",
+      "level": "semantic",
+      "kind": "auth",
+      "slots": {
+        "content": ["component.login-form"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["anonymous", "authenticating", "authenticated"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "narrow"
+      },
+      "responsive": {
+        "phone": "stack",
+        "desktop": "centered-column"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.login"
+    },
+    {
+      "id": "semantic.settings-screen",
+      "level": "semantic",
+      "kind": "settings",
+      "slots": {
+        "content": ["component.profile-form", "component.session-panel"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "ready", "forbidden"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "wide"
+      },
+      "responsive": {
+        "phone": "stack",
+        "desktop": "grid"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.settings"
+    },
+    {
+      "id": "component.login-form",
+      "level": "component",
+      "kind": "form",
+      "slots": {
+        "fields": ["atomic.login-email", "atomic.login-password"],
+        "feedback": ["atomic.login-error"],
+        "actions": ["atomic.login-submit"]
+      },
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "submit",
+          "operation": "session.login",
+          "input": {
+            "email": "atomic.login-email.value",
+            "password": "atomic.login-password.value"
+          }
+        }
+      ],
+      "states": ["idle", "submitting", "success", "validation-error", "unauthorized"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Sign in"
+      },
+      "sourceRef": "capability.session.login"
+    },
+    {
+      "id": "component.profile-form",
+      "level": "component",
+      "kind": "form",
+      "slots": {
+        "fields": ["atomic.display-name"],
+        "actions": ["atomic.save-profile"]
+      },
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "submit",
+          "operation": "account.update-profile",
+          "input": {
+            "display-name": "atomic.display-name.value"
+          }
+        }
+      ],
+      "states": ["idle", "submitting", "success", "validation-error", "forbidden"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Profile settings"
+      },
+      "sourceRef": "capability.account.update-profile"
+    },
+    {
+      "id": "component.session-panel",
+      "level": "component",
+      "kind": "card",
+      "slots": {
+        "content": ["atomic.session-account", "atomic.session-error"],
+        "actions": ["atomic.logout"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["ready", "forbidden"],
+      "styleIntent": {
+        "surface": "flat"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "capability.session.whoami"
+    },
+    {
+      "id": "atomic.login-email",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Email",
+        "required": true
+      },
+      "sourceRef": "boundary.login-input.email"
+    },
+    {
+      "id": "atomic.login-password",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Password",
+        "required": true
+      },
+      "sourceRef": "boundary.login-input.password"
+    },
+    {
+      "id": "atomic.login-submit",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "submit-nearest-form"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Sign in"
+      },
+      "sourceRef": "capability.session.login"
+    },
+    {
+      "id": "atomic.login-error",
+      "level": "atomic",
+      "kind": "alert",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["none", "unauthorized", "forbidden", "validation-failed"],
+      "styleIntent": {
+        "tone": "danger"
+      },
+      "responsive": {},
+      "accessibility": {
+        "role": "alert"
+      },
+      "sourceRef": "boundary.UNAUTHORIZED"
+    },
+    {
+      "id": "atomic.display-name",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Display name",
+        "required": true
+      },
+      "sourceRef": "domain.user-account.display-name"
+    },
+    {
+      "id": "atomic.save-profile",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "submit-nearest-form"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Save profile"
+      },
+      "sourceRef": "capability.account.update-profile"
+    },
+    {
+      "id": "atomic.session-account",
+      "level": "atomic",
+      "kind": "text",
+      "children": [],
+      "bindings": [
+        { "query": "session.whoami", "to": "text" }
+      ],
+      "actions": [],
+      "states": ["loading", "ready", "unauthorized"],
+      "styleIntent": {
+        "tone": "muted"
+      },
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "capability.session.whoami"
+    },
+    {
+      "id": "atomic.session-error",
+      "level": "atomic",
+      "kind": "alert",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["none", "unauthorized", "forbidden"],
+      "styleIntent": {
+        "tone": "danger"
+      },
+      "responsive": {},
+      "accessibility": {
+        "role": "alert"
+      },
+      "sourceRef": "boundary.FORBIDDEN"
+    },
+    {
+      "id": "atomic.logout",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "operation": "session.logout"
+        }
+      ],
+      "states": ["enabled", "pending"],
+      "styleIntent": {
+        "variant": "ghost"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Sign out"
+      },
+      "sourceRef": "capability.session.logout"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow.login-to-settings",
+      "steps": [
+        {
+          "from": "screen.login",
+          "to": "screen.settings",
+          "trigger": "submit",
+          "node": "component.login-form",
+          "operation": "session.login"
+        }
+      ]
+    },
+    {
+      "id": "flow.logout-to-login",
+      "steps": [
+        {
+          "from": "screen.settings",
+          "to": "screen.login",
+          "trigger": "activate",
+          "node": "atomic.logout",
+          "operation": "session.logout"
+        }
+      ]
+    }
+  ],
+  "localState": [
+    {
+      "id": "session.pending-login",
+      "initial": false
+    }
+  ],
+  "operationBindings": [
+    {
+      "node": "component.login-form",
+      "operation": "session.login"
+    },
+    {
+      "node": "component.profile-form",
+      "operation": "account.update-profile"
+    },
+    {
+      "node": "atomic.logout",
+      "operation": "session.logout"
+    }
+  ],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg",
+    "--muted",
+    "--border",
+    "--accent",
+    "--danger",
+    "--success"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}
