@@ -1,17 +1,13 @@
 import {
-  ResolvedApplicationIR,
   Diagnostic,
-  validateBundle,
-  ProjectionTarget,
   ProjectionConfig
 } from "@open-design/application-ir";
-import { runLoweringPipeline } from "./pipeline.js";
-import { adapterRegistry } from "./adapter-registry.js";
 import { CompilePlan, buildPlanHash } from "./plan.js";
-import { GeneratedFileSet, AdapterContext } from "./adapter-contract.js";
-import { classifyPath, ConflictClassification, getFileHash } from "./conflict.js";
+import { GeneratedFileSet } from "./adapter-contract.js";
+import { getFileHash } from "./conflict.js";
 import { GeneratedFileManifest } from "./manifest.js";
 import { computeSemanticHash } from "@open-design/application-ir";
+import { prepareAdapterPlan, classifyPlanFiles } from "./prepare.js";
 
 export interface CompileResult {
   status:
@@ -45,89 +41,22 @@ export async function compile(
   }
 ): Promise<CompileResult> {
   const runId = options?.runId || "run-default";
-  
-  // 1. Validation & Resolution
-  const valRes = validateBundle(rawBundle, rawDomain, rawCapabilities, rawBoundary, rawPersistence, rawFrontend);
-  if (valRes.diagnostics.length > 0) {
-    return {
-      status: "failed-validation",
-      diagnostics: valRes.diagnostics,
-    };
-  }
 
-  // 2. Lowering Pipeline
-  const lowerRes = runLoweringPipeline(valRes.ir!);
-  if (lowerRes.diagnostics.some(d => d.severity === "error")) {
-    return {
-      status: "failed-lowering",
-      diagnostics: lowerRes.diagnostics,
-    };
-  }
-
-  // Find target config
-  const targetConfig = config.targets.find(t => t.id === targetId);
-  if (!targetConfig) {
-    return {
-      status: "failed-planning",
-      diagnostics: [
-        {
-          code: "unsupported_kind_error",
-          message: `Target configuration '${targetId}' not found.`,
-          severity: "error",
-          phase: "planning",
-        }
-      ]
-    };
-  }
-
-  // Find adapter
-  const adapter = adapterRegistry.get(targetConfig.adapter);
-  if (!adapter) {
-    return {
-      status: "failed-planning",
-      diagnostics: [
-        {
-          code: "adapter_load_error",
-          message: `Target adapter '${targetConfig.adapter}' is not registered.`,
-          severity: "error",
-          phase: "planning",
-        }
-      ]
-    };
-  }
-
-  // 3. Adapter Validate & Plan
-  const context: AdapterContext = {
-    ir: lowerRes.ir,
-    targetConfig,
+  // 1-3. Validation, lowering, target/adapter resolution, adapter plan
+  const prepared = await prepareAdapterPlan(
+    { bundle: rawBundle, domain: rawDomain, capabilities: rawCapabilities, boundary: rawBoundary, persistence: rawPersistence, frontend: rawFrontend },
     config,
-    priorManifest: options?.priorManifest,
-  };
-
-  const adapterDiagnostics = adapter.validate(context);
-  if (adapterDiagnostics.some(d => d.severity === "error")) {
+    targetId,
+    options?.priorManifest
+  );
+  if (!prepared.ok) {
     return {
-      status: "failed-planning",
-      diagnostics: adapterDiagnostics,
+      status: prepared.status,
+      diagnostics: prepared.diagnostics,
     };
   }
 
-  let adapterPlan;
-  try {
-    adapterPlan = await adapter.plan(context);
-  } catch (err: any) {
-    return {
-      status: "failed-planning",
-      diagnostics: [
-        {
-          code: "template_render_error",
-          message: `Adapter planning failed: ${err.message}`,
-          severity: "error",
-          phase: "planning",
-        }
-      ]
-    };
-  }
+  const { ir, targetConfig, adapter, adapterPlan } = prepared;
 
   // 4. Emit file set
   let fileSet: GeneratedFileSet;
@@ -148,28 +77,8 @@ export async function compile(
   }
 
   // 5. Conflict classification
-  const creates: string[] = [];
-  const modifies: string[] = [];
-  const deletes: string[] = [];
-  const reuses: string[] = [];
-  const conflicts: { path: string; classification: ConflictClassification }[] = [];
-
   const fetcher = options?.currentFilesFetcher || (() => ({ exists: false, content: null }));
-
-  for (const file of fileSet.files) {
-    const { exists, content } = fetcher(file.path);
-    const classification = classifyPath(file.path, exists, content, options?.priorManifest || null, file.content);
-
-    if (classification === "CREATE") {
-      creates.push(file.path);
-    } else if (classification === "MODIFY_GENERATED_FILE") {
-      modifies.push(file.path);
-    } else if (classification === "NO_CHANGE" || classification === "REUSE_IDENTICAL_MANUAL") {
-      reuses.push(file.path);
-    } else {
-      conflicts.push({ path: file.path, classification });
-    }
-  }
+  const { creates, modifies, reuses, conflicts } = classifyPlanFiles(fileSet.files, options?.priorManifest || null, fetcher);
 
   // Compile final manifest structure
   const filesManifest: Record<string, { hash: string; sourceIds: string[] }> = {};
@@ -184,9 +93,9 @@ export async function compile(
   const manifest: GeneratedFileManifest = {
     schemaVersion: 1,
     targetId: targetConfig.id,
-    applicationId: lowerRes.ir.bundle.applicationId,
+    applicationId: ir.bundle.applicationId,
     compilerVersion: "0.1.0",
-    sourceHash: computeSemanticHash(lowerRes.ir),
+    sourceHash: computeSemanticHash(ir),
     configHash: computeSemanticHash(config),
     adapterVersions: {
       frontend: `${adapter.id}@${adapter.version}`,
@@ -203,7 +112,7 @@ export async function compile(
     adapterVersions: manifest.adapterVersions,
     creates,
     modifies,
-    deletes,
+    deletes: [],
     reuses,
     conflicts,
     unresolved: adapterPlan.unresolved,

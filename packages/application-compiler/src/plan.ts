@@ -21,7 +21,22 @@ export interface CompilePlan {
   planHash: string;
 }
 
-export function buildPlanHash(plan: Omit<CompilePlan, "planHash">): string {
+// The hash is computed from exactly these seven fields (each sorted), so the
+// parameter type names them instead of demanding a full CompilePlan. Callers
+// that hold a summary-shaped plan (e.g. planApplication) hash identically to
+// compile() as long as these fields agree.
+export type PlanHashInput = Pick<
+  CompilePlan,
+  | "creates"
+  | "modifies"
+  | "deletes"
+  | "reuses"
+  | "unresolved"
+  | "degradations"
+  | "permissionsRequired"
+>;
+
+export function buildPlanHash(plan: PlanHashInput): string {
   const data = JSON.stringify({
     creates: plan.creates.sort(),
     modifies: plan.modifies.sort(),

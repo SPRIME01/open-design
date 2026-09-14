@@ -6,4 +6,5 @@ export * from "./conflict.js";
 export * from "./coverage.js";
 export * from "./pipeline.js";
 export * from "./compile.js";
+export * from "./capabilities.js";
 export * from "./passes/index.js";

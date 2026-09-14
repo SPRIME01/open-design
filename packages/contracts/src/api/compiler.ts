@@ -23,6 +23,10 @@ export interface CompilerValidationResult {
   diagnostics: CompilerDiagnostic[];
 }
 
+export interface CompilerValidateRequest {
+  projectRoot: string;
+}
+
 export interface CompilerPlanSummary {
   planHash: string;
   targetId: string;
@@ -38,6 +42,18 @@ export interface CompilerPlanSummary {
   verificationPlanned: { name: string; command: { executable: string; argv: string[] } }[];
 }
 
+export interface CompilerPlanRequest {
+  projectRoot: string;
+  targetId: string;
+}
+
+export interface CompilerRunEvidenceRefs {
+  planPath?: string;
+  manifestPath?: string;
+  evidencePath?: string;
+  diagnosticsPath?: string;
+}
+
 export interface CompilerRunStatus {
   runId: string;
   status: 'queued' | 'validating' | 'lowering' | 'planning' | 'writing' | 'verifying' | 'succeeded' | 'failed' | 'cancelled';
@@ -47,6 +63,7 @@ export interface CompilerRunStatus {
   planHash?: string;
   startedAt: string;
   completedAt?: string;
+  evidenceRefs?: CompilerRunEvidenceRefs;
 }
 
 export interface CompilerRunResult {
