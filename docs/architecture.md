@@ -330,15 +330,32 @@ Runs are fully async. The POST endpoint returns immediately with a `runId`; the 
 ### 9.4 CLI and MCP surface
 
 ```bash
-od compiler targets                              # list available targets
-od compiler compile \
-  --project <path> \
-  --target <id> \
-  [--wait]                                       # poll until done
-  [--json]                                       # machine-readable output
+od app init --project <dir> [--template crud|marketing]
+                                                # scaffold a starter bundle (writes files)
+od app validate --project <dir>                 # validate the bundle (read-only)
+od app targets list                             # list available target adapters (read-only)
+od app plan --project <dir> [--target <id>]     # plan a compile without writing output
+od app compile --project <dir> [--target <id>] [--follow] [--wait] [--json]
+                                                # full pipeline; writes generated/<target>/
+od app verify --project <dir> [--target <id>] [--follow]
+                                                # compile, then report verification evidence
+od app run get <run-id>                         # fetch one compile run record
+od app conflicts list --run <run-id>            # show conflicts recorded on a run
 ```
 
-MCP tools: `compiler_targets`, `compiler_compile` — exposed through the stdio MCP server in `apps/daemon/src/mcp-live-artifacts-server.ts`.
+`od compiler targets|compile` remains as a compatibility alias delegating to the same handlers.
+
+MCP tools — exposed through the stdio MCP server in `apps/daemon/src/mcp-live-artifacts-server.ts` (spec §11.3):
+
+- `list_application_targets` (read-only) — registered target adapters
+- `get_application_ir` (read-only) — raw bundle + module documents via `POST /api/compiler/ir`
+- `validate_application_ir` (read-only) — validation verdict and diagnostics
+- `plan_application_target` (read-only) — plan hash, file plan, conflicts, permissions
+- `compile_application_target` (write-capable) — full pipeline; writes `generated/<target>/`
+- `get_compiler_run` (read-only) — one compile run record
+- `get_compiler_evidence` (read-only) — evidence references plus a concise diagnostics summary
+
+Read tools carry `readOnlyHint: true` + `idempotentHint: true` annotations; `compile_application_target` carries `readOnlyHint: false`. The evidence tool returns references and summaries, not generated-repository dumps — use the existing `get_file` / `list_files` tools for file contents.
 
 ### 9.5 Boundary constraints
 

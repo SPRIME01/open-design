@@ -13,6 +13,18 @@ interface McpTool {
   name: string;
   description: string;
   inputSchema: JsonObject;
+  /**
+   * MCP tool annotations (the SDK Tool shape's hint subset). Read-only tools
+   * set `readOnlyHint: true` + `idempotentHint: true`; write-capable tools
+   * set `readOnlyHint: false` so MCP clients can gate them (spec §11.3).
+   */
+  annotations?: {
+    title?: string;
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 interface McpServerResult {
@@ -38,6 +50,54 @@ const ARTIFACT_INPUT_SCHEMA = {
   additionalProperties: true,
   description: 'LiveArtifactCreateInput/LiveArtifactUpdateInput JSON plus optional templateHtml and provenanceJson fields.',
 } satisfies JsonObject;
+
+const PROJECT_ROOT_INPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['projectRoot'],
+  properties: {
+    projectRoot: { type: 'string', minLength: 1, description: 'Project root containing application.ir.json.' },
+  },
+} satisfies JsonObject;
+
+const PLAN_TARGET_INPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['projectRoot', 'targetId'],
+  properties: {
+    projectRoot: { type: 'string', minLength: 1 },
+    targetId: { type: 'string', minLength: 1 },
+  },
+} satisfies JsonObject;
+
+const COMPILE_TARGET_INPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['targetId'],
+  properties: {
+    projectRoot: { type: 'string', description: 'Defaults to the daemon process cwd (".").' },
+    targetId: { type: 'string', minLength: 1 },
+  },
+} satisfies JsonObject;
+
+const RUN_ID_INPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['runId'],
+  properties: {
+    runId: { type: 'string', minLength: 1 },
+  },
+} satisfies JsonObject;
+
+/** Read-only annotation shared by the six read tools (spec §11.3). */
+function readOnlyToolAnnotations(title: string): NonNullable<McpTool['annotations']> {
+  return {
+    title,
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  };
+}
 
 export function createLiveArtifactsMcpTools(): McpTool[] {
   return [
@@ -107,22 +167,57 @@ export function createLiveArtifactsMcpTools(): McpTool[] {
       },
     },
     {
-      name: 'compiler_targets',
-      description: 'List all registered target adapters in the compiler. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" compiler targets`.',
+      name: 'list_application_targets',
+      description:
+        'List all registered application target adapters with their id, version, kind, features, and limitations. Read-only. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app targets list`.',
       inputSchema: EMPTY_OBJECT_SCHEMA,
+      annotations: readOnlyToolAnnotations('List application targets'),
     },
     {
-      name: 'compiler_compile',
-      description: 'Run the compilation pipeline for a target. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" compiler compile --project <path> --target <targetId>`.',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['targetId'],
-        properties: {
-          projectRoot: { type: 'string' },
-          targetId: { type: 'string', minLength: 1 },
-        },
+      name: 'get_application_ir',
+      description:
+        'Load a project\'s raw application IR documents — the bundle (application.ir.json) plus the domain, capabilities, boundary, persistence, and frontend modules — exactly as the compiler reads them from disk, without validating. Read-only. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app validate --project <dir>` (nearest CLI read of the same IR documents; it returns a verdict instead of the raw docs).',
+      inputSchema: PROJECT_ROOT_INPUT_SCHEMA,
+      annotations: readOnlyToolAnnotations('Get application IR'),
+    },
+    {
+      name: 'validate_application_ir',
+      description:
+        'Validate a project\'s application IR and return the verdict plus structured diagnostics without compiling. Read-only. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app validate --project <dir>`.',
+      inputSchema: PROJECT_ROOT_INPUT_SCHEMA,
+      annotations: readOnlyToolAnnotations('Validate application IR'),
+    },
+    {
+      name: 'plan_application_target',
+      description:
+        'Plan a compile for a target without writing generated output: returns the plan hash, file plan (creates/modifies/deletes/reuses), conflicts, and required permissions. The daemon records plan evidence under the project\'s compiler/ directory; generated/ output is not touched. Read-only. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app plan --project <dir> --target <id>`.',
+      inputSchema: PLAN_TARGET_INPUT_SCHEMA,
+      annotations: readOnlyToolAnnotations('Plan application target'),
+    },
+    {
+      name: 'compile_application_target',
+      description:
+        'Run the full compilation pipeline for a target and poll the run until it reaches a terminal state (succeeded/failed/cancelled). Write-capable: it writes generated output under the project\'s generated/<target>/ directory and executes the verification steps the adapter planned. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app compile --project <path> --target <targetId>`.',
+      inputSchema: COMPILE_TARGET_INPUT_SCHEMA,
+      annotations: {
+        title: 'Compile application target',
+        readOnlyHint: false,
+        destructiveHint: false,
       },
+    },
+    {
+      name: 'get_compiler_run',
+      description:
+        'Fetch one compiler run record: status, phase, progress, plan hash, diagnostics, and evidence references. Read-only. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app run get <runId>`.',
+      inputSchema: RUN_ID_INPUT_SCHEMA,
+      annotations: readOnlyToolAnnotations('Get compiler run'),
+    },
+    {
+      name: 'get_compiler_evidence',
+      description:
+        'Fetch a compiler run\'s evidence references (plan, manifest, evidence, and diagnostics paths) plus a concise diagnostics summary. Returns references and summaries, not file contents — use the existing get_file/list_files tools to read referenced files. Read-only. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app run get <runId>`.',
+      inputSchema: RUN_ID_INPUT_SCHEMA,
+      annotations: readOnlyToolAnnotations('Get compiler evidence'),
     },
   ];
 }
@@ -178,6 +273,37 @@ async function requestJson<T = unknown>(pathname: string, init: RequestInit = {}
   return body as T;
 }
 
+/**
+ * Concise diagnostics summary for `get_compiler_evidence` (spec §11.3 prefers
+ * references and concise summaries over dumping content): severity counts
+ * plus per-diagnostic code/severity/phase with messages truncated to 200
+ * chars — full messages live in the referenced diagnostics file.
+ */
+function summarizeCompilerDiagnostics(diagnostics: unknown): {
+  total: number;
+  errors: number;
+  warnings: number;
+  advisories: number;
+  items: Array<{ code: unknown; severity: unknown; phase: unknown; message: unknown }>;
+} {
+  const list = Array.isArray(diagnostics) ? diagnostics : [];
+  const countBySeverity = (severity: string) =>
+    list.filter((d) => typeof d === 'object' && d !== null && (d as { severity?: unknown }).severity === severity).length;
+  return {
+    total: list.length,
+    errors: countBySeverity('error'),
+    warnings: countBySeverity('warning'),
+    advisories: countBySeverity('advisory'),
+    items: list.map((d) => {
+      const item = typeof d === 'object' && d !== null ? (d as Record<string, unknown>) : {};
+      const message = typeof item.message === 'string' && item.message.length > 200
+        ? `${item.message.slice(0, 197)}...`
+        : item.message;
+      return { code: item.code, severity: item.severity, phase: item.phase, message };
+    }),
+  };
+}
+
 async function callTool(name: string, args: JsonObject): Promise<unknown> {
   if (name === 'live_artifacts_create') {
     return await requestJson('/api/tools/live-artifacts/create', {
@@ -216,10 +342,28 @@ async function callTool(name: string, args: JsonObject): Promise<unknown> {
       body: JSON.stringify({ connectorId: args.connectorId, toolName: args.toolName, input: args.input ?? {} }),
     });
   }
-  if (name === 'compiler_targets') {
+  if (name === 'list_application_targets') {
     return await requestJson('/api/compiler/targets', { method: 'GET' });
   }
-  if (name === 'compiler_compile') {
+  if (name === 'get_application_ir') {
+    return await requestJson('/api/compiler/ir', {
+      method: 'POST',
+      body: JSON.stringify({ projectRoot: args.projectRoot }),
+    });
+  }
+  if (name === 'validate_application_ir') {
+    return await requestJson('/api/compiler/validate', {
+      method: 'POST',
+      body: JSON.stringify({ projectRoot: args.projectRoot }),
+    });
+  }
+  if (name === 'plan_application_target') {
+    return await requestJson('/api/compiler/plan', {
+      method: 'POST',
+      body: JSON.stringify({ projectRoot: args.projectRoot, targetId: args.targetId }),
+    });
+  }
+  if (name === 'compile_application_target') {
     const projectRoot = typeof args.projectRoot === 'string' ? args.projectRoot : '.';
     const targetId = args.targetId;
     const startRes = await requestJson('/api/compiler/runs', {
@@ -233,6 +377,18 @@ async function callTool(name: string, args: JsonObject): Promise<unknown> {
       status = await requestJson(`/api/compiler/runs/${runId}`, { method: 'GET' });
     }
     return status;
+  }
+  if (name === 'get_compiler_run') {
+    return await requestJson(`/api/compiler/runs/${encodeURIComponent(String(args.runId))}`, { method: 'GET' });
+  }
+  if (name === 'get_compiler_evidence') {
+    const run = await requestJson(`/api/compiler/runs/${encodeURIComponent(String(args.runId))}`, { method: 'GET' }) as any;
+    return {
+      runId: run.runId,
+      status: run.status,
+      evidenceRefs: run.evidenceRefs ?? {},
+      diagnosticsSummary: summarizeCompilerDiagnostics(run.diagnostics),
+    };
   }
   throw new Error(`unknown MCP tool: ${name}`);
 }

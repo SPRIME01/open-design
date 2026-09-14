@@ -34,6 +34,29 @@ export interface CompilerValidateRequest {
   projectRoot: string;
 }
 
+/** Request body for `POST /api/compiler/ir`. */
+export interface CompilerIrRequest {
+  projectRoot: string;
+}
+
+/**
+ * Response of `POST /api/compiler/ir`: the project's raw IR documents
+ * exactly as loaded from disk — no validation, no mutation. `bundle` is the
+ * parsed `application.ir.json`; each module is the raw JSON the bundle's
+ * `modules` map points at (a missing module file loads as `{}`). This is the
+ * same input a validate/plan/compile of the project would operate on.
+ */
+export interface CompilerIrResponse {
+  bundle: unknown;
+  modules: {
+    domain: unknown;
+    capabilities: unknown;
+    boundary: unknown;
+    persistence: unknown;
+    frontend: unknown;
+  };
+}
+
 export interface CompilerPlanSummary {
   planHash: string;
   targetId: string;

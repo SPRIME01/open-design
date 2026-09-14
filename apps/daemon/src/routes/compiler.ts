@@ -5,6 +5,7 @@ import { runPersistence } from '../compiler/run-persistence.js';
 import { adapterRegistry } from '@open-design/application-compiler';
 import type {
   CompilerApproveRequest,
+  CompilerIrRequest,
   CompilerPlanRequest,
   CompilerValidateRequest,
 } from '@open-design/contracts';
@@ -40,6 +41,22 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
       res.json(list);
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL', `Failed to list compiler targets: ${err.message}`);
+    }
+  });
+
+  app.post('/api/compiler/ir', (req, res) => {
+    try {
+      const { projectRoot } = req.body as CompilerIrRequest;
+      if (!projectRoot || typeof projectRoot !== 'string') {
+        return sendApiError(res, 400, 'BAD_REQUEST', "projectRoot is a required field.");
+      }
+      // Raw IR retrieval for MCP `get_application_ir`: the docs as loaded,
+      // with no validation verdict attached (spec §11.3 read tool).
+      res.json(compilerService.loadRaw(projectRoot));
+    } catch (err: any) {
+      if (!sendCompilerServiceError(res, err)) {
+        sendApiError(res, 500, 'INTERNAL', `Failed to load application IR: ${err.message}`);
+      }
     }
   });
 

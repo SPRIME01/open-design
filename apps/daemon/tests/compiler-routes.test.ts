@@ -121,6 +121,46 @@ describe('POST /api/compiler/validate', () => {
   });
 });
 
+describe('POST /api/compiler/ir', () => {
+  it('returns the raw bundle and module documents for the guestbook fixture', async () => {
+    const resp = await postJson(`${baseUrl}/api/compiler/ir`, { projectRoot: guestbookRoot });
+    expect(resp.status).toBe(200);
+    const result = await resp.json() as any;
+    expect(result.bundle.applicationId).toBe('guestbook');
+    expect(result.bundle.modules.domain).toBe('ir/domain.ir.json');
+    expect(Object.keys(result.modules).sort()).toEqual(
+      ['boundary', 'capabilities', 'domain', 'frontend', 'persistence'],
+    );
+    for (const module of Object.values(result.modules)) {
+      expect(typeof module).toBe('object');
+    }
+  }, 60_000);
+
+  it('returns 400 when projectRoot is missing', async () => {
+    const resp = await postJson(`${baseUrl}/api/compiler/ir`, {});
+    expect(resp.status).toBe(400);
+    const body = await resp.json() as any;
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('returns 404 when projectRoot does not exist', async () => {
+    const resp = await postJson(`${baseUrl}/api/compiler/ir`, {
+      projectRoot: path.join(os.tmpdir(), 'od-compiler-no-such-project-root'),
+    });
+    expect(resp.status).toBe(404);
+    const body = await resp.json() as any;
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 404 when application.ir.json is absent from an existing project root', async () => {
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'od-compiler-empty-ir-'));
+    const resp = await postJson(`${baseUrl}/api/compiler/ir`, { projectRoot: emptyDir });
+    expect(resp.status).toBe(404);
+    const body = await resp.json() as any;
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
 describe('POST /api/compiler/plan', () => {
   it('returns a succeeded plan with a plan hash and on-disk evidence for guestbook html-static', async () => {
     const resp = await postJson(`${baseUrl}/api/compiler/plan`, {

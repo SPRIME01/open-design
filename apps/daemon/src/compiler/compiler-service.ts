@@ -189,6 +189,26 @@ export const compilerService = {
   },
 
   /**
+   * Raw IR retrieval for MCP `get_application_ir`: returns the six raw JSON
+   * documents exactly as the shared loader reads them (no validation, no
+   * mutation), so a caller sees the same input a validate/plan/compile of
+   * this project would operate on.
+   */
+  loadRaw(projectRoot: string) {
+    const { input } = loadCompilerInput(projectRoot);
+    return {
+      bundle: input.bundle,
+      modules: {
+        domain: input.domain,
+        capabilities: input.capabilities,
+        boundary: input.boundary,
+        persistence: input.persistence,
+        frontend: input.frontend,
+      },
+    };
+  },
+
+  /**
    * Validate-only: runs the compiler's validation pass over the project's raw
    * IR docs and persists the diagnostics under compiler/diagnostics/. Never
    * writes to generated/ — an invalid project is not a transport error, so
