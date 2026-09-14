@@ -26,7 +26,9 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "axe-core": "4.13.0",
     "esbuild": "0.28.0",
+    "jsdom": "29.1.1",
     "typescript": "5.9.3",
     "vitest": "4.1.6"
   }
