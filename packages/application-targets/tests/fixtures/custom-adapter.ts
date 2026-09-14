@@ -7,8 +7,15 @@ import {
   VerificationStep
 } from "@open-design/application-compiler";
 
+export interface CustomTxtAdapterOptions {
+  /** Registry id; defaults to "custom-txt". */
+  id?: string;
+  /** Verification steps the adapter's plan declares; empty by default. */
+  verificationSteps?: VerificationStep[];
+}
+
 export class CustomTxtAdapter implements ApplicationTargetAdapter {
-  readonly id = "custom-txt";
+  readonly id: string;
   readonly version = "0.1.0";
   readonly kind = "compound";
   readonly supportedIr = {
@@ -18,6 +25,19 @@ export class CustomTxtAdapter implements ApplicationTargetAdapter {
     features: ["custom-text-summary"],
     limitations: [],
   };
+
+  /**
+   * Verification steps declared by plan(). Mutable on purpose: a test can
+   * re-point the adapter at a corrected step while keeping the same registry
+   * identity, so a failing and a passing variant differ in the step outcome
+   * only — never in targetId, adapterVersions, or the emitted files.
+   */
+  verificationSteps: VerificationStep[];
+
+  constructor(options: CustomTxtAdapterOptions = {}) {
+    this.id = options.id ?? "custom-txt";
+    this.verificationSteps = options.verificationSteps ?? [];
+  }
 
   validate(context: AdapterContext): Diagnostic[] {
     return [];
@@ -38,7 +58,7 @@ export class CustomTxtAdapter implements ApplicationTargetAdapter {
       degradations: [],
       permissions: [],
       commands: [],
-      verificationSteps: [],
+      verificationSteps: this.verificationSteps,
     };
   }
 
