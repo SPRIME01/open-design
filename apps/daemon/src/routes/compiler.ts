@@ -1,13 +1,32 @@
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
 import type { RouteDeps } from '../server-context.js';
-import { compilerService } from '../compiler/compiler-service.js';
+import { compilerService, CompilerServiceError } from '../compiler/compiler-service.js';
 import { runPersistence } from '../compiler/run-persistence.js';
 import { adapterRegistry } from '@open-design/application-compiler';
+import type {
+  CompilerApproveRequest,
+  CompilerPlanRequest,
+  CompilerValidateRequest,
+} from '@open-design/contracts';
 
 export interface RegisterCompilerRoutesDeps extends RouteDeps<'http'> {}
 
 export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutesDeps) {
   const { sendApiError } = ctx.http;
+
+  /**
+   * Map a typed CompilerServiceError onto its HTTP response. Returns false for
+   * non-service errors so callers can fall through to their 500 handler.
+   */
+  const sendCompilerServiceError = (res: Response, err: unknown): boolean => {
+    if (!(err instanceof CompilerServiceError)) return false;
+    if (err.code === 'PLAN_HASH_MISMATCH') {
+      sendApiError(res, 409, 'PLAN_HASH_MISMATCH', err.message);
+    } else {
+      sendApiError(res, 404, 'NOT_FOUND', err.message);
+    }
+    return true;
+  };
 
   app.get('/api/compiler/targets', (req, res) => {
     try {
@@ -21,6 +40,38 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
       res.json(list);
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL', `Failed to list compiler targets: ${err.message}`);
+    }
+  });
+
+  app.post('/api/compiler/validate', async (req, res) => {
+    try {
+      const { projectRoot } = req.body as CompilerValidateRequest;
+      if (!projectRoot || typeof projectRoot !== 'string') {
+        return sendApiError(res, 400, 'BAD_REQUEST', "projectRoot is a required field.");
+      }
+      // Validation verdicts (including valid:false) are 200s — only transport
+      // failures (missing/nonexistent projectRoot, internal errors) are 4xx/5xx.
+      const result = await compilerService.validate(projectRoot);
+      res.json(result);
+    } catch (err: any) {
+      if (!sendCompilerServiceError(res, err)) {
+        sendApiError(res, 500, 'INTERNAL', `Failed to validate application: ${err.message}`);
+      }
+    }
+  });
+
+  app.post('/api/compiler/plan', async (req, res) => {
+    try {
+      const { projectRoot, targetId } = req.body as CompilerPlanRequest;
+      if (!projectRoot || !targetId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', "projectRoot and targetId are required fields.");
+      }
+      const result = await compilerService.plan(projectRoot, targetId);
+      res.json(result);
+    } catch (err: any) {
+      if (!sendCompilerServiceError(res, err)) {
+        sendApiError(res, 500, 'INTERNAL', `Failed to plan application compile: ${err.message}`);
+      }
     }
   });
 
@@ -71,10 +122,16 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
       if (!run) {
         return sendApiError(res, 404, 'NOT_FOUND', `Compiler run '${req.params.id}' not found.`);
       }
-      // Simple approval mock
-      res.json(run);
+      const { planHash } = (req.body ?? {}) as CompilerApproveRequest;
+      if (!planHash) {
+        return sendApiError(res, 400, 'BAD_REQUEST', "planHash is a required field.");
+      }
+      // Hash-bound approval: a mismatch is a 409, not a silent mock pass-through.
+      res.json(compilerService.approve(req.params.id, planHash));
     } catch (err: any) {
-      sendApiError(res, 500, 'INTERNAL', `Failed to approve plan: ${err.message}`);
+      if (!sendCompilerServiceError(res, err)) {
+        sendApiError(res, 500, 'INTERNAL', `Failed to approve plan: ${err.message}`);
+      }
     }
   });
 

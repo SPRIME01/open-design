@@ -21,6 +21,13 @@ export interface CompilerDiagnostic {
 export interface CompilerValidationResult {
   valid: boolean;
   diagnostics: CompilerDiagnostic[];
+  /**
+   * Project-relative-to-absolute path where the daemon persisted this
+   * validation pass's diagnostics (`<projectRoot>/compiler/diagnostics/…`).
+   * Present only on daemon-served responses; the pure compiler packages
+   * return the first two fields.
+   */
+  diagnosticsPath?: string;
 }
 
 export interface CompilerValidateRequest {
@@ -47,6 +54,33 @@ export interface CompilerPlanRequest {
   targetId: string;
 }
 
+/**
+ * Result of a plan-only pass (`POST /api/compiler/plan`). Structurally
+ * identical to `PlanApplicationResult` in `@open-design/application-compiler`;
+ * the two packages do not depend on each other, so keep the shapes in sync.
+ */
+export type CompilerPlanStatus =
+  | 'succeeded'
+  | 'blocked'
+  | 'conflicted'
+  | 'failed-validation'
+  | 'failed-lowering'
+  | 'failed-planning';
+
+export interface CompilerPlanResult {
+  status: CompilerPlanStatus;
+  diagnostics: CompilerDiagnostic[];
+  plan?: CompilerPlanSummary;
+  planHash?: string;
+  /** Where the daemon persisted the plan summary (`<projectRoot>/compiler/plans/…`). */
+  evidenceRefs?: CompilerRunEvidenceRefs;
+}
+
+/** Approval body for `POST /api/compiler/runs/:id/approve`. */
+export interface CompilerApproveRequest {
+  planHash: string;
+}
+
 export interface CompilerRunEvidenceRefs {
   planPath?: string;
   manifestPath?: string;
@@ -61,6 +95,8 @@ export interface CompilerRunStatus {
   progress: number; // 0 to 100
   diagnostics: CompilerDiagnostic[];
   planHash?: string;
+  /** Set by `POST /api/compiler/runs/:id/approve` when the presented hash matched `planHash`. */
+  approvedPlanHash?: string;
   startedAt: string;
   completedAt?: string;
   evidenceRefs?: CompilerRunEvidenceRefs;

@@ -179,6 +179,12 @@ export const API_ERROR_CODES = [
   // so a client can attach to it instead of starting another. Not retryable
   // while that run is active; ordinary chat turns are never gated by this.
   'DESIGN_SYSTEM_ENRICHMENT_IN_PROGRESS',
+  // `POST /api/compiler/runs/:id/approve`: the approval presented a plan hash
+  // that does not match the hash the run actually planned — or the run has not
+  // reached a state that stores a plan hash yet (queued/in-flight/failed
+  // before planning). HTTP 409: the caller must re-read the run's current
+  // `planHash` and re-issue the approval against it, not retry the same hash.
+  'PLAN_HASH_MISMATCH',
   'INTERNAL_ERROR',
 ] as const;
 
