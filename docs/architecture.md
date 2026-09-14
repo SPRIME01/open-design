@@ -336,6 +336,7 @@ POST /api/compiler/runs/:runId/approve  ← hash-bound plan approval
                                           wrong hash → 409 PLAN_HASH_MISMATCH
 POST /api/compiler/runs/:runId/cancel   ← cancel a run
 GET  /api/compiler/runs/:runId/events   ← SSE stream of run progress events
+GET  /api/compiler/metrics              ← in-process run metrics snapshot (§9.6)
 ```
 
 Runs are fully async. The POST endpoint returns immediately with a `runId`; the client polls `/api/compiler/runs/:runId` until `status` is `"succeeded"`, `"failed"`, or `"cancelled"`. A succeeded run carries `planHash` plus `evidenceRefs` pointing at the on-disk plan, manifest, and verification evidence.
@@ -377,3 +378,7 @@ Read tools carry `readOnlyHint: true` + `idempotentHint: true` annotations; `com
 - `apps/daemon/src/compiler/` owns the daemon-side compiler orchestration (service, project writer, verification runner). It must not be imported by `apps/web`.
 - All compiler API DTOs live in `packages/contracts/src/api/compiler.ts`. Update contracts before changing request or response shapes.
 - The compiler must read `application.ir.json` from the project root. It must not discover IR by crawling arbitrary directories.
+
+### 9.6 Observability
+
+Every compile run emits one JSON log line per lifecycle event (`run_created`, `validation_completed`, `lowering_started/completed`, `plan_created`, `write_committed`, `verification_step_started/completed`, `approval_requested/resolved/rejected`, `run_terminal`) with the spec §12.3 context: run/project/application/target ids, phase, source/config/plan hashes, adapter ids and versions, diagnostic codes, and verification step ids. An in-process tracker aggregates runs by terminal status, per-phase durations, per-target success rate, deterministic no-op rate, conflict and degradation counts, and verification failure categories; `GET /api/compiler/metrics` and `od app metrics` expose the snapshot. Counters reset on daemon restart.
