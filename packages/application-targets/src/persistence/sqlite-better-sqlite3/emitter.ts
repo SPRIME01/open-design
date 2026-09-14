@@ -179,13 +179,68 @@ function emitMigrationSql(ir: ResolvedApplicationIR): string {
 }
 
 function emitDbModule(): string {
-  return `// sqlite-better-sqlite3 database client.
+  return `// sqlite-better-sqlite3 database client and migration runner.
 import Database from "better-sqlite3";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export function getDatabase(dbPath: string) {
   const db = new Database(dbPath);
+  // PRAGMA foreign_keys is a connection-level toggle and a no-op inside a
+  // transaction, so it is set here — outside any transaction — before any
+  // migration or query runs.
   db.pragma("foreign_keys = ON");
   return db;
+}
+
+export interface AppliedMigration {
+  version: string;
+  fileName: string;
+}
+
+// SQLite DDL is transactional: CREATE/ALTER/DROP executed between BEGIN and
+// COMMIT rolls back exactly like DML. applyMigrations relies on that — each
+// migration file runs inside ONE transaction together with the INSERT that
+// records its version in schema_migrations, so a failure partway through a
+// file (bad SQL in a later statement, a constraint violation mid-batch)
+// rolls the whole file back: the previous schema AND data stay intact and
+// nothing is recorded for the failed version. The error propagates to the
+// caller; already-applied files are skipped, so repeat calls are no-ops.
+export function applyMigrations(db: Database.Database, migrationsDir: string): AppliedMigration[] {
+  db.exec(\`CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  file_name TEXT NOT NULL,
+  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+)\`);
+
+  const applied = new Set(
+    (db.prepare("SELECT version FROM schema_migrations").all() as { version: string }[]).map(
+      row => row.version,
+    ),
+  );
+
+  const migrationFiles = readdirSync(migrationsDir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith(".sql"))
+    .map(entry => entry.name)
+    .sort();
+
+  const appliedNow: AppliedMigration[] = [];
+  for (const fileName of migrationFiles) {
+    const version = fileName.replace(/\\.sql$/, "");
+    if (applied.has(version)) {
+      continue;
+    }
+    const sql = readFileSync(join(migrationsDir, fileName), "utf8");
+    // One transaction per migration file: statements plus the version record
+    // commit together or roll back together.
+    const applyFile = db.transaction(() => {
+      db.exec(sql);
+      db.prepare("INSERT INTO schema_migrations (version, file_name) VALUES (?, ?)").run(version, fileName);
+    });
+    applyFile();
+    appliedNow.push({ version, fileName });
+  }
+  return appliedNow;
 }
 `;
 }

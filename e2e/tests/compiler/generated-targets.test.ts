@@ -3,9 +3,10 @@
 // Real-toolchain integration tests for generated targets (hardening plan N2,
 // spec §17.4): the compiler's react-vite, nextjs-app, and sveltekit outputs
 // must install and build under the real npm toolchain, and the
-// sqlite-better-sqlite3 output must apply its generated migration and
-// round-trip a row through the generated repository module against a real
-// better-sqlite3 native build.
+// sqlite-better-sqlite3 output must apply its generated migrations through the
+// generated applyMigrations runner — including a mid-file migration failure
+// that must roll back (spec §13) — and round-trip rows through the generated
+// repository module against a real better-sqlite3 native build.
 //
 // No tools-dev runtime is needed: the compiler packages are driven
 // in-process (the same boundary packages/application-compiler/tests/
@@ -54,6 +55,35 @@ type SqliteDriverVerdict = {
   tables: string[];
   foreignKeys: number;
 };
+
+type SqliteRollbackVerdict = {
+  firstRun: { version: string; fileName: string }[];
+  rowsBefore: { id: string; author: string; message: string; created_at: string }[];
+  failure: string | null;
+  appliedVersions: string[];
+  tables: string[];
+  rowAfter1: { id: string; author: string; message: string; created_at: string } | null;
+  rowAfter2: { id: string; author: string; message: string; created_at: string } | null;
+  idsAfter: string[];
+  inTransaction: boolean;
+};
+
+// Rows written through the generated repository BEFORE the failing migration
+// runs; after the rollback they must still round-trip byte-identically.
+const ROLLBACK_EXPECTED_ROWS = [
+  {
+    id: 'entry-r4-1',
+    author: 'Ada Lovelace',
+    message: 'written before the failed migration',
+    created_at: '2026-09-13T12:00:00.000Z',
+  },
+  {
+    id: 'entry-r4-2',
+    author: 'Grace Hopper',
+    message: 'also written before the failed migration',
+    created_at: '2026-09-13T12:01:00.000Z',
+  },
+];
 
 // The config type of compile()'s 7th parameter (ProjectionConfig) is not
 // re-exported by @open-design/application-compiler; recover it from the
@@ -285,6 +315,62 @@ describe.sequential('compiler generated targets real-toolchain integration', () 
     },
     600_000,
   );
+
+  test(
+    '[P2] sqlite-better-sqlite3 applyMigrations rolls back a mid-file migration failure (spec §13)',
+    async ({ skip, onTestFailed }) => {
+      const npmToolchain = toolchain;
+      const targetDir = targetDirs.get('sqlite-better-sqlite3');
+      if (!npmToolchain || !targetDir) {
+        skip(`npm toolchain unavailable (${describeToolchain()}); cannot exercise sqlite migration rollback`);
+        return;
+      }
+      onTestFailed(() => {
+        preserveGeneratedRoot = true;
+      });
+
+      // Reuses the native module the round-trip test installs; a filtered
+      // standalone run installs it itself.
+      if (!existsSync(join(targetDir, 'node_modules', 'better-sqlite3'))) {
+        await runNpm(npmToolchain, ['install', '--no-audit', '--no-fund'], targetDir, INSTALL_TIMEOUT_MS, 'install');
+      }
+
+      const migrationsDir = join(targetDir, 'src', 'server', 'persistence', 'migrations');
+      const driverFile = join(targetDir, 'rollback-driver.ts');
+      await writeFile(driverFile, SQLITE_ROLLBACK_DRIVER_SOURCE, 'utf8');
+
+      const { stdout } = await runNode(
+        [driverFile, join(targetDir, 'rollback.db'), migrationsDir],
+        targetDir,
+        DRIVER_TIMEOUT_MS,
+        'sqlite rollback driver',
+      );
+      const verdict = parseDriverVerdict<SqliteRollbackVerdict>(stdout);
+
+      // Sanity: the first apply recorded the generated initial migration.
+      expect(verdict.firstRun, `driver stdout: ${stdout}`).toEqual([
+        { version: '0001_initial', fileName: '0001_initial.sql' },
+      ]);
+
+      // The broken second migration THREW out of applyMigrations...
+      expect(verdict.failure, `driver stdout: ${stdout}`).toContain('syntax error');
+
+      // ...and rolled back: the failed version is NOT recorded...
+      expect(verdict.appliedVersions, `driver stdout: ${stdout}`).toEqual(['0001_initial']);
+      // ...the pre-failure statement's effect (its CREATE TABLE) is absent...
+      expect(verdict.tables, `driver stdout: ${stdout}`).toContain('entry');
+      expect(verdict.tables, `driver stdout: ${stdout}`).not.toContain('rollback_probe');
+      // ...the prior data still round-trips byte-identically through the
+      // generated repository...
+      expect(verdict.rowsBefore, `driver stdout: ${stdout}`).toEqual(ROLLBACK_EXPECTED_ROWS);
+      expect(verdict.rowAfter1, `driver stdout: ${stdout}`).toEqual(ROLLBACK_EXPECTED_ROWS[0]);
+      expect(verdict.rowAfter2, `driver stdout: ${stdout}`).toEqual(ROLLBACK_EXPECTED_ROWS[1]);
+      expect(verdict.idsAfter, `driver stdout: ${stdout}`).toEqual(['entry-r4-1', 'entry-r4-2']);
+      // ...and the connection was left outside any transaction.
+      expect(verdict.inTransaction, `driver stdout: ${stdout}`).toBe(false);
+    },
+    600_000,
+  );
 });
 
 // --- helpers ---
@@ -392,13 +478,13 @@ function commandErrorDetail(error: unknown): string {
     .join('\n');
 }
 
-function parseDriverVerdict(stdout: string): SqliteDriverVerdict {
+function parseDriverVerdict<T = SqliteDriverVerdict>(stdout: string): T {
   const lines = stdout.trim().split('\n');
   const last = lines[lines.length - 1];
   if (!last) {
     throw new Error(`sqlite driver printed no verdict line; stdout: ${stdout}`);
   }
-  return JSON.parse(last) as SqliteDriverVerdict;
+  return JSON.parse(last) as T;
 }
 
 /**
@@ -432,6 +518,70 @@ const SQLITE_DRIVER_SOURCE = [
   '    row,',
   '    tables,',
   "    foreignKeys: db.pragma('foreign_keys', { simple: true }),",
+  '  }),',
+  ');',
+  '',
+].join('\n');
+
+/**
+ * Failure-injection driver for the generated migration runner (spec §13
+ * recovery row). Phase 1 applies the generated initial migration through the
+ * generated applyMigrations and writes real rows through the generated entry
+ * repository. Phase 2 drops a SECOND migration file into the same migrations
+ * dir whose SQL is valid then invalid — the failure lands mid-file, after the
+ * CREATE TABLE succeeded but before any version record could commit. Phase 3
+ * proves the rollback: no version recorded for the failed file, the
+ * pre-failure table gone, prior rows intact, connection outside any
+ * transaction. The database is file-backed so the rollback is a real
+ * on-disk rollback, not an in-memory artifact.
+ */
+const SQLITE_ROLLBACK_DRIVER_SOURCE = [
+  "import { writeFileSync } from 'node:fs';",
+  "import { join } from 'node:path';",
+  "import { getDatabase, applyMigrations } from './src/server/persistence/db.ts';",
+  "import { createEntryRepository } from './src/server/persistence/entry-repository.ts';",
+  '',
+  'const db = getDatabase(process.argv[2]);',
+  'const migrationsDir = process.argv[3];',
+  '',
+  '// Phase 1: generated migration applies; rows round-trip.',
+  'const firstRun = applyMigrations(db, migrationsDir);',
+  'const entryRepository = createEntryRepository(db);',
+  `const rows = ${JSON.stringify(ROLLBACK_EXPECTED_ROWS)};`,
+  'for (const row of rows) entryRepository.insert(row);',
+  'const rowsBefore = entryRepository.list();',
+  '',
+  '// Phase 2: second migration, valid SQL then invalid SQL.',
+  'writeFileSync(',
+  "  join(migrationsDir, '0002_broken.sql'),",
+  `  ${JSON.stringify(['CREATE TABLE "rollback_probe" ("id" TEXT PRIMARY KEY);', '', 'THIS IS NOT SQL;', ''].join('\n'))},`,
+  "  'utf8',",
+  ');',
+  '',
+  'let failure = null;',
+  'try {',
+  '  applyMigrations(db, migrationsDir);',
+  '} catch (error) {',
+  '  failure = String(error && error.message ? error.message : error);',
+  '}',
+  '',
+  '// Phase 3: prove the rollback left prior schema and data intact.',
+  "const appliedVersions = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((r) => r.version);",
+  "const tables = db.prepare(\"SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name\").all().map((t) => t.name);",
+  "const rowAfter1 = entryRepository.get('entry-r4-1');",
+  "const rowAfter2 = entryRepository.get('entry-r4-2');",
+  'const idsAfter = entryRepository.list().map((r) => r.id);',
+  'console.log(',
+  '  JSON.stringify({',
+  '    firstRun,',
+  '    rowsBefore,',
+  '    failure,',
+  '    appliedVersions,',
+  '    tables,',
+  '    rowAfter1,',
+  '    rowAfter2,',
+  '    idsAfter,',
+  '    inTransaction: db.inTransaction,',
   '  }),',
   ');',
   '',

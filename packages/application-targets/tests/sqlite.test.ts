@@ -1,6 +1,9 @@
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, afterEach } from "vitest";
+import { execFile } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
+import { promisify } from "util";
 import { compile } from "@open-design/application-compiler";
 import { registerAllBuiltInAdapters } from "../src/index.js";
 
@@ -212,6 +215,162 @@ describe("sqlite persistence adapter tests", () => {
       ).toEqual(first.map(f => f.content));
     }
   });
+});
+
+// --- generated migration runner (applyMigrations) ---
+
+// Per-fixture driver configuration. auth-settings declares only get/update
+// repository operations (no insert), so only guestbook exercises the
+// repository round-trip here.
+interface MigrationRunnerFixture {
+  repositoryModule?: string;
+  factoryName?: string;
+  insertRow?: Record<string, string>;
+}
+
+const migrationRunnerFixtures: Record<string, MigrationRunnerFixture> = {
+  guestbook: {
+    repositoryModule: "./src/server/persistence/entry-repository.ts",
+    factoryName: "createEntryRepository",
+    insertRow: {
+      id: "entry-r4-pkg",
+      author: "Grace Hopper",
+      message: "migration runner round-trip",
+      created_at: "2026-09-13T09:30:00.000Z",
+    },
+  },
+  "auth-settings": {},
+};
+
+function migrationRunnerFixture(name: string): MigrationRunnerFixture {
+  const fixture = migrationRunnerFixtures[name];
+  expect(fixture, `migration runner fixture config missing: ${name}`).toBeDefined();
+  return fixture as MigrationRunnerFixture;
+}
+
+interface MigrationRunnerVerdict {
+  firstRun: { version: string; fileName: string }[];
+  row?: Record<string, unknown>;
+  listed?: Record<string, unknown>[];
+  versions: string[];
+  tables: string[];
+  secondRun: { version: string; fileName: string }[];
+  inTransaction: boolean;
+}
+
+function migrationRunnerDriverSource(fixture: MigrationRunnerFixture): string {
+  const lines = [
+    `import { getDatabase, applyMigrations } from './src/server/persistence/db.ts';`,
+  ];
+  if (fixture.repositoryModule && fixture.factoryName) {
+    lines.push(`import { ${fixture.factoryName} } from '${fixture.repositoryModule}';`);
+  }
+  lines.push(
+    ``,
+    `const db = getDatabase(':memory:');`,
+    `const migrationsDir = process.argv[2];`,
+    `const firstRun = applyMigrations(db, migrationsDir);`,
+  );
+  if (fixture.factoryName && fixture.insertRow) {
+    lines.push(
+      `const repository = ${fixture.factoryName}(db);`,
+      `repository.insert(${JSON.stringify(fixture.insertRow)});`,
+      `const row = repository.get(${JSON.stringify(fixture.insertRow.id)});`,
+      `const listed = repository.list();`,
+    );
+  }
+  lines.push(
+    `const versions = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((r) => r.version);`,
+    `const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((t) => t.name);`,
+    `const secondRun = applyMigrations(db, migrationsDir);`,
+    fixture.insertRow
+      ? `console.log(JSON.stringify({ firstRun, row, listed, versions, tables, secondRun, inTransaction: db.inTransaction }));`
+      : `console.log(JSON.stringify({ firstRun, versions, tables, secondRun, inTransaction: db.inTransaction }));`,
+    ``,
+  );
+  return lines.join("\n");
+}
+
+describe("generated migration runner (applyMigrations)", () => {
+  const execFileAsync = promisify(execFile);
+  const tempRoots: string[] = [];
+
+  afterEach(async () => {
+    while (tempRoots.length > 0) {
+      const root = tempRoots.pop();
+      if (root) {
+        await fs.promises.rm(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  // Materializes the generated file set into a scratch project whose
+  // node_modules links back to this package's own node_modules, so the
+  // generated `import Database from "better-sqlite3"` resolves when the
+  // driver runs under plain node (Node 24 strips the generated annotations
+  // natively; the generated package.json provides "type": "module").
+  async function materializeGenerated(files: GeneratedFile[]): Promise<string> {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "od-sqlite-migrations-"));
+    tempRoots.push(root);
+    for (const generated of files) {
+      const absolute = path.join(root, generated.path);
+      await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
+      await fs.promises.writeFile(absolute, generated.content, "utf8");
+    }
+    await fs.promises.symlink(
+      path.join(import.meta.dirname, "..", "node_modules"),
+      path.join(root, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir"
+    );
+    return root;
+  }
+
+  async function runDriver(root: string): Promise<MigrationRunnerVerdict> {
+    const driverFile = path.join(root, "migration-driver.ts");
+    const migrationsDir = path.join(root, "src", "server", "persistence", "migrations");
+    const { stdout, stderr } = await execFileAsync(process.execPath, [driverFile, migrationsDir], {
+      cwd: root,
+      timeout: 60_000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    const lastLine = stdout.trim().split("\n").pop() ?? "";
+    expect(lastLine, `migration driver printed no verdict (stderr: ${stderr})`).toMatch(/^\{/);
+    return JSON.parse(lastLine) as MigrationRunnerVerdict;
+  }
+
+  it.each(sqliteFixtures.map(f => [f.name, f.dir] as const))(
+    "applies the generated migration to a fresh database, records the version, and skips it on re-apply (%s)",
+    async (name, dir) => {
+      const files = await compileSqlite(dir);
+      const root = await materializeGenerated(files);
+      const runner = migrationRunnerFixture(name);
+      await fs.promises.writeFile(
+        path.join(root, "migration-driver.ts"),
+        migrationRunnerDriverSource(runner),
+        "utf8"
+      );
+      const verdict = await runDriver(root);
+
+      // First apply: the generated initial migration commits and its version
+      // is recorded in schema_migrations.
+      expect(verdict.firstRun).toEqual([{ version: "0001_initial", fileName: "0001_initial.sql" }]);
+      expect(verdict.versions).toEqual(["0001_initial"]);
+      expect(verdict.tables).toEqual(
+        expect.arrayContaining(["schema_migrations", name === "guestbook" ? "entry" : "user-account"])
+      );
+
+      // Round-trip where the IR declares an insert operation (guestbook).
+      const insertRow = runner.insertRow;
+      if (insertRow) {
+        expect(verdict.row).toEqual(insertRow);
+        expect(verdict.listed).toEqual([insertRow]);
+      }
+
+      // Second apply: already-applied files are skipped — a no-op.
+      expect(verdict.secondRun).toEqual([]);
+      expect(verdict.inTransaction).toBe(false);
+    }
+  );
 });
 
 // Column names the migration derives for an entity's fields (snake_case of
