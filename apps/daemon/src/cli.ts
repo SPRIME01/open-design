@@ -16,6 +16,13 @@ import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 import { runDeliverableSyntaxToolCli } from './tools-deliverable-syntax-cli.js';
 import { splitResearchSubcommand } from './research/cli-args.js';
 import { resolveDaemonUrl } from './daemon-url.js';
+import {
+  runApp,
+  appCompile,
+  appTargetsList,
+  APP_STRING_FLAGS,
+  APP_BOOLEAN_FLAGS,
+} from './compiler/app-cli.js';
 import { SidecarFactory } from '@open-design/sidecar';
 import { APP_KEYS, SIDECAR_MESSAGES } from '@open-design/sidecar-proto';
 import { EXPORT_FORMATS, EXPORT_IMAGE_FORMATS, mediaFailureNextStep } from '@open-design/contracts';
@@ -384,8 +391,18 @@ const PLUGIN_LIST_BOOLEAN_FLAGS = new Set([
   ...PLUGIN_BOOLEAN_FLAGS,
   'bundled', 'no-bundled',
 ]);
+// `od app …` is the canonical application-compiler CLI (spec §11.1). The
+// command implementation lives in src/compiler/app-cli.ts so this file stays
+// a thin dispatcher; its accepted-flag Sets (APP_STRING_FLAGS /
+// APP_BOOLEAN_FLAGS, the union across all `od app` subcommands) are imported
+// above and re-listed here per this file's hoisting convention — the import
+// binding guarantees initialization before the top-of-file SUBCOMMAND_MAP
+// dispatch, exactly like the hoisted `const` Sets around this comment.
+//   APP_STRING_FLAGS:  --daemon-url --project --target --template --run
+//   APP_BOOLEAN_FLAGS: --help/-h --json --follow --wait
 
 const SUBCOMMAND_MAP = {
+  app: runAppEntry,
   compiler: runCompiler,
   agent: runAgent,
   artifacts: runArtifacts,
@@ -12019,15 +12036,28 @@ async function runAutomation(args) {
 function printCompilerHelp() {
   console.log(`Usage: od compiler <subcommand> [flags]
 
+Compatibility alias for the canonical \`od app\` surface (spec §11.1);
+targets and compile delegate to the same handlers in
+src/compiler/app-cli.ts.
+
 Subcommands:
   targets                                List all registered target adapters
   compile                                Run the compilation pipeline for a target
 
 Flags:
   --project <path>                      Root directory of the project containing application.ir.json
-  --target <targetId>                   Target adapter ID (e.g. html-static)
-  --json                                 Format output as JSON
-`);
+  --target <targetId>                   Target adapter ID (e.g. html-static); may be omitted when
+                                        projection.config.json declares exactly one target
+  --json                                Format output as JSON
+
+Run \`od app --help\` for the full canonical surface.`);
+}
+
+// `od app` entry: passes the hoisted APP_*_FLAGS union so runApp can reject
+// hallucinated flags at dispatch time (each subcommand then re-parses its
+// own narrower flag set inside app-cli.ts).
+async function runAppEntry(rest) {
+  return runApp(rest, { stringFlags: APP_STRING_FLAGS, booleanFlags: APP_BOOLEAN_FLAGS });
 }
 
 async function runCompiler(args) {
@@ -12037,89 +12067,11 @@ async function runCompiler(args) {
   }
   const sub = args[0];
   const rest = args.slice(1);
-  const flags = parseFlags(rest, { string: ['project', 'target'], boolean: ['json'] });
-  const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
-
-  switch (sub) {
-    case 'targets': {
-      let resp;
-      try {
-        resp = await fetch(`${base}/api/compiler/targets`);
-      } catch (err) {
-        console.error(`Failed to connect to daemon at ${base}:`, err);
-        process.exit(3);
-      }
-      if (!resp.ok) {
-        console.error(`Failed to list targets: ${resp.status} ${await resp.text()}`);
-        process.exit(1);
-      }
-      const data = await resp.json();
-      if (flags.json) {
-        process.stdout.write(JSON.stringify(data, null, 2) + '\n');
-        return;
-      }
-      for (const t of data) {
-        console.log(`${t.id}@${t.version} (${t.kind})`);
-        console.log(`  Features: ${t.features.join(', ') || 'none'}`);
-        console.log(`  Limitations: ${t.limitations.join(', ') || 'none'}`);
-      }
-      return;
-    }
-    case 'compile': {
-      const projectRoot = flags.project || process.cwd();
-      const targetId = flags.target;
-      if (!targetId) {
-        console.error('Error: --target <targetId> is required.');
-        process.exit(2);
-      }
-      let resp;
-      try {
-        resp = await fetch(`${base}/api/compiler/runs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectRoot, targetId }),
-        });
-      } catch (err) {
-        console.error(`Failed to connect to daemon at ${base}:`, err);
-        process.exit(3);
-      }
-      if (!resp.ok) {
-        console.error(`Failed to start compile: ${resp.status} ${await resp.text()}`);
-        process.exit(1);
-      }
-      const startRes = await resp.json();
-      const runId = startRes.runId;
-
-      let status = startRes.status;
-      while (status.status !== 'succeeded' && status.status !== 'failed' && status.status !== 'cancelled') {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const pollResp = await fetch(`${base}/api/compiler/runs/${runId}`);
-        if (pollResp.ok) {
-          status = await pollResp.json();
-          if (!flags.json) {
-            console.log(`[${status.phase}] status=${status.status} progress=${status.progress}%`);
-          }
-        }
-      }
-
-      if (flags.json) {
-        process.stdout.write(JSON.stringify(status, null, 2) + '\n');
-      } else {
-        console.log(`Compilation finished with status: ${status.status}`);
-        if (status.status === 'failed') {
-          for (const diag of status.diagnostics || []) {
-            console.error(`[${diag.severity.toUpperCase()}] ${diag.message} (${diag.code})`);
-          }
-          process.exit(1);
-        }
-      }
-      return;
-    }
-    default:
-      console.error(`unknown subcommand: od compiler ${sub}`);
-      printCompilerHelp();
-      process.exit(2);
-  }
+  if (sub === 'targets') return appTargetsList(rest);
+  if (sub === 'compile') return appCompile(rest);
+  console.error(`unknown subcommand: od compiler ${sub}`);
+  printCompilerHelp();
+  process.exit(2);
 }
 
 // ---------------------------------------------------------------------------
