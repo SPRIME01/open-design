@@ -19,9 +19,42 @@ export function emitNextjsApp(ir: ResolvedApplicationIR): FileChange[] {
     devDependencies: {
       "typescript": "^5.5.0",
       "@types/react": "^18.3.0",
-      "@types/react-dom": "^18.3.0"
+      "@types/react-dom": "^18.3.0",
+      // next build's TypeScript verification installs any missing @types/*
+      // package through the package manager (a network round-trip); shipping
+      // the pin up front keeps the generated build offline-safe. Version
+      // mirrors this repository's own @types/node pin.
+      "@types/node": "^20.19.39"
     }
   };
+
+  // Next 14 App Router baseline. Presence plus a complete set of the
+  // compilerOptions `next build` would otherwise assign as defaults keeps the
+  // build from synthesizing or rewriting the config; next-env.d.ts itself is
+  // generated locally by the build (a file write, never an install).
+  const tsconfigJson = `{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}`;
 
   const nextConfig = `/** @type {import('next').NextConfig} */
 const nextConfig = {};
@@ -70,6 +103,11 @@ export default function Page() {
     {
       path: "next.config.mjs",
       content: nextConfig,
+      sourceIds: [],
+    },
+    {
+      path: "tsconfig.json",
+      content: tsconfigJson,
       sourceIds: [],
     },
     {

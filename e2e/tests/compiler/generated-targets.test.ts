@@ -4,7 +4,7 @@
 // spec §17.4): the compiler's react-vite, nextjs-app, and sveltekit outputs
 // must install and build under the real npm toolchain, and the
 // sqlite-better-sqlite3 output must apply its generated migration and
-// round-trip a row through the generated persistence module against a real
+// round-trip a row through the generated repository module against a real
 // better-sqlite3 native build.
 //
 // No tools-dev runtime is needed: the compiler packages are driven
@@ -221,6 +221,12 @@ describe.sequential('compiler generated targets real-toolchain integration', () 
       await runNpm(npmToolchain, ['install', '--no-audit', '--no-fund'], targetDir, INSTALL_TIMEOUT_MS, 'install');
       await runNpm(npmToolchain, ['run', 'build'], targetDir, BUILD_TIMEOUT_MS, 'build');
 
+      // The emitter ships a tsconfig.json (Next 14 App Router baseline) plus
+      // the @types/* pins in package.json, so `next build` verifies
+      // TypeScript without synthesizing a config or installing type packages
+      // on its own — the build stays offline-safe and deterministic.
+      expect(existsSync(join(targetDir, 'tsconfig.json')), 'generated tsconfig.json missing').toBe(true);
+
       expect(existsSync(join(targetDir, '.next', 'BUILD_ID')), '.next/BUILD_ID missing').toBe(true);
     },
     600_000,
@@ -239,25 +245,12 @@ describe.sequential('compiler generated targets real-toolchain integration', () 
         preserveGeneratedRoot = true;
       });
 
-      // The sqlite emitter ships only the migration and db module (no
-      // package.json), so the test scaffolds the minimal install manifest
-      // next to the generated code: `better-sqlite3` at the repo-pinned
-      // major, ESM so the generated `import` syntax parses under plain node.
-      await writeFile(
-        join(targetDir, 'package.json'),
-        JSON.stringify(
-          {
-            name: 'guestbook-sqlite-verify',
-            private: true,
-            version: '0.0.0',
-            type: 'module',
-            dependencies: { 'better-sqlite3': '^11.10.0' },
-          },
-          null,
-          2,
-        ),
-        'utf8',
-      );
+      // The sqlite emitter ships its own install manifest (package.json with
+      // better-sqlite3 at the repo-pinned major and ESM type so the generated
+      // import syntax parses under plain node); no test-local scaffold.
+      expect(existsSync(join(targetDir, 'package.json')), 'generated package.json missing').toBe(true);
+      const repositoryFile = join(targetDir, 'src', 'server', 'persistence', 'entry-repository.ts');
+      expect(existsSync(repositoryFile), 'generated entry repository module missing').toBe(true);
 
       // `npm install` here is the point of the test: better-sqlite3's install
       // script runs prebuild-install (or node-gyp) and produces the native
@@ -269,7 +262,7 @@ describe.sequential('compiler generated targets real-toolchain integration', () 
       expect(existsSync(migrationFile), 'generated migration missing').toBe(true);
 
       // Driver: Node 24 strips types natively, so plain `node` can import the
-      // generated TypeScript db module (annotation-only syntax).
+      // generated TypeScript modules (annotation-only syntax).
       const driverFile = join(targetDir, 'driver.ts');
       await writeFile(driverFile, SQLITE_DRIVER_SOURCE, 'utf8');
 
@@ -409,28 +402,27 @@ function parseDriverVerdict(stdout: string): SqliteDriverVerdict {
 }
 
 /**
- * Exercises the generated artifacts only: db.ts (via getDatabase) and
- * migrations/0001_initial.sql. The insert/select statements target the
- * `entry` table shape the emitter derives from the guestbook domain IR
- * (id/author/message/created_at columns).
+ * Exercises the generated artifacts only: db.ts (via getDatabase), the
+ * migration SQL, and — the point of this driver — the generated entry
+ * repository module, whose insert/get run the round-trip through prepared
+ * statements against the `entry` table the emitter derives from the guestbook
+ * domain IR (id/author/message/created_at columns).
  */
 const SQLITE_DRIVER_SOURCE = [
   "import { readFileSync } from 'node:fs';",
   "import { getDatabase } from './src/server/persistence/db.ts';",
+  "import { createEntryRepository } from './src/server/persistence/entry-repository.ts';",
   '',
   'const db = getDatabase(process.argv[2]);',
   "db.exec(readFileSync(process.argv[3], 'utf8'));",
-  'db.prepare(',
-  "  'INSERT INTO entry (id, author, message, created_at) VALUES (?, ?, ?, ?)',",
-  ').run(',
-  "  'entry-n2-1',",
-  "  'Ada Lovelace',",
-  "  'Generated persistence round-trip',",
-  "  '2026-09-13T12:00:00.000Z',",
-  ');',
-  'const row = db',
-  "  .prepare('SELECT id, author, message, created_at FROM entry WHERE id = ?')",
-  "  .get('entry-n2-1');",
+  'const entryRepository = createEntryRepository(db);',
+  'entryRepository.insert({',
+  "  id: 'entry-n2-1',",
+  "  author: 'Ada Lovelace',",
+  "  message: 'Generated persistence round-trip',",
+  "  created_at: '2026-09-13T12:00:00.000Z',",
+  '});',
+  'const row = entryRepository.get("entry-n2-1");',
   'const tables = db',
   "  .prepare(\"SELECT name FROM sqlite_master WHERE type = 'table'\")",
   '  .all()',

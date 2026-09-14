@@ -238,4 +238,41 @@ describe("emitter output quality", () => {
     expect(sql).toContain('"created_at"');
     expect(sql).not.toContain('"created-at"');
   });
+
+  it("nextjs-app emits a tsconfig.json and @types/node pin so next build stays offline-safe", async () => {
+    const res = await compileTarget("nextjs-app", {
+      id: "nextjs-app",
+      adapter: "nextjs-app",
+      mode: "scaffold" as const,
+      outputRoot: "generated/nextjs-app",
+      frontend: { adapter: "nextjs-app" },
+    });
+
+    expect(res.status).toBe("succeeded");
+    const tsconfig = JSON.parse(
+      res.fileSet?.files.find(f => f.path === "tsconfig.json")?.content ?? "{}"
+    );
+
+    // Next 14 App Router baseline: presence of the config (plus the @types/*
+    // pins below) keeps `next build` from synthesizing a tsconfig or
+    // installing type packages through the package manager.
+    expect(tsconfig.compilerOptions).toMatchObject({
+      jsx: "preserve",
+      module: "esnext",
+      moduleResolution: "bundler",
+      strict: true,
+      noEmit: true,
+      isolatedModules: true,
+      esModuleInterop: true,
+    });
+    expect(tsconfig.compilerOptions.paths).toEqual({ "@/*": ["./src/*"] });
+    expect(tsconfig.include).toContain("next-env.d.ts");
+    expect(tsconfig.include).toContain("**/*.tsx");
+    expect(tsconfig.exclude).toContain("node_modules");
+
+    const pkg = JSON.parse(
+      res.fileSet?.files.find(f => f.path === "package.json")?.content ?? "{}"
+    );
+    expect(pkg.devDependencies["@types/node"]).toBeDefined();
+  });
 });
