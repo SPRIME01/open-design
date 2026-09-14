@@ -30,6 +30,9 @@ export type EntryHomeView =
   | 'members'
   | 'board'
   | 'workspace-settings'
+  // Application Compiler panel (spec §11.4): `/compiler` renders the
+  // standalone panel outside the entry shell, like `/settings` does.
+  | 'compiler'
   // Full-page personal Settings surface. `/settings` renders the same
   // SettingsDialog component in its `page` presentation instead of the modal.
   | 'settings';
@@ -137,6 +140,9 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'settings') {
     return { kind: 'home', view: 'settings' };
   }
+  if (parts[0] === 'compiler' && !parts[1]) {
+    return { kind: 'home', view: 'compiler' };
+  }
   if (parts[0] === 'collab-demo') {
     return { kind: 'collab-demo', projectId: parts[1] ? decodeURIComponent(parts[1]) : null };
   }
@@ -192,6 +198,7 @@ export function buildPath(route: Route): string {
     if (route.view === 'members') return '/members';
     if (route.view === 'board') return '/board';
     if (route.view === 'workspace-settings') return '/workspace-settings';
+    if (route.view === 'compiler') return '/compiler';
     if (route.view === 'settings') return '/settings';
     return '/';
   }

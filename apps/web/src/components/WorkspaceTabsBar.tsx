@@ -1985,6 +1985,7 @@ function displayTabFor(
     members: t('entry.navMembers'),
     board: t('entry.navBoard'),
     'workspace-settings': t('entry.navWorkspaceSettings'),
+    compiler: t('compiler.navLabel'),
     settings: t('settings.title'),
   };
   const entryIcon: Record<EntryHomeView, IconName> = {
@@ -2003,6 +2004,7 @@ function displayTabFor(
     members: 'users',
     board: 'kanban',
     'workspace-settings': 'settings',
+    compiler: 'blocks',
     settings: 'settings',
   };
   return {

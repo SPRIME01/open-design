@@ -1809,6 +1809,22 @@ export function EntryNavRail({
         >
           <Icon name="globe" size={16} />
         </NavButton>
+        {/* Application Compiler panel (spec §11.4). Rides outside the
+            workspace/sign-in branches so it stays reachable in both states.
+            Calls `onViewChange` directly rather than `selectView`: nav-click
+            tracking derives its `target` from the closed
+            TrackingWorkspacePage union in contracts, which has no compiler
+            page value — skipping the event beats mislabeling it as 'home'
+            until analytics grows the enum. */}
+        <NavButton
+          active={view === 'compiler'}
+          ariaLabel={t('compiler.navLabel')}
+          label={t('compiler.navLabel')}
+          onClick={() => onViewChange('compiler')}
+          testId="entry-nav-compiler"
+        >
+          <Icon name="blocks" size={16} />
+        </NavButton>
 
         {context ? (
           <div className="entry-nav-rail__team-section">

@@ -1,0 +1,277 @@
+/* Application Compiler panel (spec §11.4). Colocated by design: no global
+   stylesheet grows for this feature. Colors ride the app's CSS variables
+   with literal fallbacks, matching the CollabDemoView module convention. */
+
+.panel {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--color-text, #1f2937);
+}
+
+.description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-muted, #6b7280);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--color-surface, #fff);
+}
+
+.loadRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.loadRow > :last-child {
+  flex: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--color-muted, #6b7280);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.subsectionTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #1f2937);
+}
+
+.statusOk {
+  margin: 0;
+  font-size: 13px;
+  color: #15803d;
+}
+
+.statusError {
+  margin: 0;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.statusMuted {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted, #6b7280);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #b91c1c;
+}
+
+.countGrid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.countGrid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-border, #e5e7eb) 26%, transparent);
+}
+
+.countGrid dt {
+  font-size: 11px;
+  color: var(--color-muted, #6b7280);
+}
+
+.countGrid dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text, #1f2937);
+}
+
+.hashLine,
+.permissionLine {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.hash,
+.path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  background: color-mix(in srgb, var(--color-border, #e5e7eb) 30%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.diagnosticList,
+.conflictList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diagnosticItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diagnosticCode {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--color-muted, #6b7280);
+}
+
+.diagnosticMessage {
+  overflow-wrap: anywhere;
+  color: var(--color-text, #1f2937);
+}
+
+.conflictItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.conflictClass {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #92400e;
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+}
+
+.runHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.runStatus {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #1f2937);
+}
+
+.runMeta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--color-muted, #6b7280);
+}
+
+.progressTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border, #e5e7eb) 40%, transparent);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent, #2563eb);
+  /* Repo motion rule: ease-out curve, short enter-side duration. */
+  transition: width 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.evidenceList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.evidenceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.evidenceRow dt {
+  font-size: 11px;
+  color: var(--color-muted, #6b7280);
+}
+
+.evidenceRow dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.approveBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.staleNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}

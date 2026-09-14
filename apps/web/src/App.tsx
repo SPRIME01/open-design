@@ -237,6 +237,7 @@ import {
 } from './state/project-display-cache';
 import { getOpenDesignHost, type OpenDesignHostProjectImportSuccess } from '@open-design/host';
 import { useI18n } from './i18n';
+import { ApplicationCompilerPanel } from './features/application-compiler/ApplicationCompilerPanel';
 import { liveArtifactTabId } from './types';
 import type {
   AgentInfo,
@@ -5209,6 +5210,10 @@ function AppInner() {
         }
       />
     );
+  } else if (route.kind === 'home' && route.view === 'compiler') {
+    // Spec §11.4 web panel: standalone full-page surface (like /settings),
+    // self-contained against /api/compiler/* — no entry-shell data props.
+    appMain = <ApplicationCompilerPanel />;
   } else if (route.kind === 'home' && route.view === 'settings') {
     appMain = renderSettingsSurface('page');
   } else if (route.kind === 'project') {
