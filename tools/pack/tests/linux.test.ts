@@ -58,6 +58,7 @@ import {
   buildDockerArgs,
   cleanupPackedLinuxNamespace,
   createLinuxDesktopLaunchEnv,
+  materializeNativeBindings,
   inspectPackedLinuxApp,
   LINUX_APPIMAGE_EXECUTABLE_ARGS,
   matchesAppImageProcess,
@@ -946,5 +947,61 @@ describe("matchesAppImageProcess", () => {
       installPath,
     );
     expect(ok).toBe(false);
+  });
+});
+
+describe("materializeNativeBindings", () => {
+  it("copies the workspace-built better-sqlite3 binding into the assembled app tree", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "od-pack-native-ws-"));
+    const assembledAppRoot = await mkdtemp(join(tmpdir(), "od-pack-native-app-"));
+    try {
+      const bindingRelativePath = join("build", "Release", "better_sqlite3.node");
+      // pnpm links native packages under the consuming package's node_modules
+      // (apps/daemon here); materializeNativeBindings resolves through that
+      // graph, so stage a real resolvable package layout.
+      const daemonPackageDir = join(workspaceRoot, "apps", "daemon");
+      const sourcePackageDir = join(daemonPackageDir, "node_modules", "better-sqlite3");
+      const sourceBinding = join(sourcePackageDir, bindingRelativePath);
+      await mkdir(dirname(sourceBinding), { recursive: true });
+      await writeFile(join(sourcePackageDir, "package.json"), JSON.stringify({ name: "better-sqlite3", version: "12.10.0", main: "lib/index.js" }));
+      await writeFile(sourceBinding, "native-binding-bytes");
+      await mkdir(daemonPackageDir, { recursive: true });
+      await writeFile(join(daemonPackageDir, "package.json"), JSON.stringify({ name: "@open-design/daemon", version: "0.22.1", type: "module", main: "dist/cli.js" }));
+
+      const materialized = await materializeNativeBindings(workspaceRoot, assembledAppRoot);
+
+      expect(materialized).toEqual([
+        { packageName: "better-sqlite3", bindingRelativePath },
+      ]);
+      const targetBinding = join(assembledAppRoot, "node_modules", "better-sqlite3", bindingRelativePath);
+      expect(await pathExists(targetBinding)).toBe(true);
+      expect(await readFile(targetBinding, "utf8")).toBe("native-binding-bytes");
+    } finally {
+      await rm(workspaceRoot, { force: true, recursive: true });
+      await rm(assembledAppRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("fails loudly when the workspace binding was never built (package resolvable, no .node)", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "od-pack-native-ws-"));
+    const assembledAppRoot = await mkdtemp(join(tmpdir(), "od-pack-native-app-"));
+    try {
+      // Resolvable package layout, but the native binding was never built —
+      // the exact state a fresh checkout without a daemon-native rebuild is in.
+      const daemonPackageDir = join(workspaceRoot, "apps", "daemon");
+      const sourcePackageDir = join(daemonPackageDir, "node_modules", "better-sqlite3");
+      await mkdir(sourcePackageDir, { recursive: true });
+      await writeFile(join(sourcePackageDir, "package.json"), JSON.stringify({ name: "better-sqlite3", version: "12.10.0", main: "lib/index.js" }));
+      await mkdir(daemonPackageDir, { recursive: true });
+      await writeFile(join(daemonPackageDir, "package.json"), JSON.stringify({ name: "@open-design/daemon", version: "0.22.1", type: "module", main: "dist/cli.js" }));
+
+      await expect(materializeNativeBindings(workspaceRoot, assembledAppRoot)).rejects.toThrow();
+      expect(
+        await pathExists(join(assembledAppRoot, "node_modules", "better-sqlite3", "build")),
+      ).toBe(false);
+    } finally {
+      await rm(workspaceRoot, { force: true, recursive: true });
+      await rm(assembledAppRoot, { force: true, recursive: true });
+    }
   });
 });

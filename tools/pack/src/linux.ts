@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { access, chmod, cp, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, posix } from "node:path";
@@ -461,6 +462,48 @@ async function runProductionInstall(appRoot: string): Promise<void> {
   });
 }
 
+// Native modules whose build artifacts the production install cannot be
+// trusted to produce: the assembled-app install runs with pnpm 10's default
+// build-script allowlist absent, so better-sqlite3's prebuild-install step
+// silently never runs and the module loads without its `.node` binding. The
+// headless Linux runtime executes under the workspace's own Node ABI, so the
+// binding the workspace already built is the correct artifact — copy it in
+// rather than rebuilding. Paths are relative to the package root in both
+// trees; extend this list if a packaged-runtime boot reports another missing
+// native binding.
+const LINUX_NATIVE_BINDING_OVERRIDES = [
+  {
+    packageName: "better-sqlite3",
+    bindingRelativePath: join("build", "Release", "better_sqlite3.node"),
+  },
+] as const;
+
+export async function materializeNativeBindings(
+  workspaceRoot: string,
+  assembledAppRoot: string,
+): Promise<{ packageName: string; bindingRelativePath: string }[]> {
+  // The workspace does not hoist native packages to the root node_modules
+  // (pnpm links them under the consuming package), so resolve each package's
+  // real directory through the daemon's dependency graph.
+  const daemonRequire = createRequire(join(workspaceRoot, "apps", "daemon", "package.json"));
+  const materialized: { packageName: string; bindingRelativePath: string }[] = [];
+  for (const override of LINUX_NATIVE_BINDING_OVERRIDES) {
+    const packageRoot = dirname(daemonRequire.resolve(join(override.packageName, "package.json")));
+    const sourceBinding = join(packageRoot, override.bindingRelativePath);
+    await access(sourceBinding);
+    const targetBinding = join(
+      assembledAppRoot,
+      "node_modules",
+      override.packageName,
+      override.bindingRelativePath,
+    );
+    await mkdir(dirname(targetBinding), { recursive: true });
+    await cp(sourceBinding, targetBinding);
+    materialized.push({ packageName: override.packageName, bindingRelativePath: override.bindingRelativePath });
+  }
+  return materialized;
+}
+
 async function readPackagedVersion(config: ToolPackConfig): Promise<string> {
   return readRuntimeAppVersion(config);
 }
@@ -574,6 +617,7 @@ async function writeAssembledApp(
   );
 
   await runProductionInstall(paths.assembledAppRoot);
+  await materializeNativeBindings(config.workspaceRoot, paths.assembledAppRoot);
 }
 
 async function writeLinuxAppImageAppRun(paths: LinuxPaths): Promise<void> {
