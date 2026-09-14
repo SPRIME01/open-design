@@ -84,15 +84,18 @@ pnpm tools-dev start daemon
 ### Compile your first application
 
 ```bash
-# List available targets
-od compiler targets
+# Scaffold a starter project (IR bundle + projection config)
+od app init --project ./my-project
 
-# Compile a project to a target — blocks until it finishes, prints progress
-od compiler compile --project ./my-project --target react-vite
+# Validate the IR, plan the compile, then run it — verify afterwards
+od app validate --project ./my-project
+od app plan --project ./my-project --target react-vite
+od app compile --project ./my-project --target react-vite --follow
+od app verify --project ./my-project --target react-vite
 
 # Compile every target at once
 for target in html-static react-vite nextjs-app sveltekit; do
-  od compiler compile --project ./my-project --target $target
+  od app compile --project ./my-project --target $target
 done
 ```
 
@@ -137,8 +140,8 @@ Full internals → [`docs/architecture.md`](docs/architecture.md) · [`docs/spec
 |---|---|
 | IR packages | `@open-design/application-ir` · `@open-design/application-compiler` · `@open-design/application-targets` |
 | Daemon | Node 24 · Express · SSE streaming · `better-sqlite3` |
-| CLI | `od compiler targets` · `od compiler compile` |
-| MCP Tools | `compiler_targets` · `compiler_compile` |
+| CLI | `od app init` · `od app validate` · `od app plan` · `od app compile` · `od app verify` |
+| MCP Tools | `list_application_targets` · `get_application_ir` · `validate_application_ir` · `plan_application_target` · `compile_application_target` · `get_compiler_run` · `get_compiler_evidence` |
 | Frontend | Next.js 16 App Router + React 18 + TypeScript |
 
 ---
@@ -218,9 +221,9 @@ Contribution guide → [`CONTRIBUTING.md`](CONTRIBUTING.md). Agent-specific guid
 - [x] IR schema with Zod validation — domain, capabilities, boundary, persistence, frontend
 - [x] 9-pass compiler pipeline (validate → resolve → normalize → lower → plan → project → write → verify)
 - [x] 7 built-in target adapters: `html-static`, `react-vite`, `nextjs-app`, `sveltekit`, `mock-local`, `next-server-actions`, `sqlite-better-sqlite3`
-- [x] Daemon API (`/api/compiler/runs`, `/api/compiler/targets`) with async run tracking
-- [x] CLI (`od compiler targets`, `od compiler compile`) with `--json`
-- [x] MCP tools (`compiler_targets`, `compiler_compile`)
+- [x] Daemon API (`/api/compiler/validate`, `/api/compiler/plan`, `/api/compiler/runs`) with async run tracking and hash-bound approve
+- [x] CLI (`od app init`, `validate`, `plan`, `compile`, `verify`) with `--json` and `--follow`
+- [x] MCP tools (7 named compiler tools with read/write annotations)
 - [x] Deterministic file manifests, compile plans, and verification reports
 - [x] Production builds verified: Next.js (`next build`) and React/Vite (`vite build`)
 - [ ] Frontend lowering: resolve component slots, flows, and deep node trees correctly

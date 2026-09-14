@@ -279,26 +279,13 @@ Both modes end in the same file workspace and sandboxed preview, but their hando
 
 The Application Compiler translates a semantic IR bundle into a production-ready, framework-native application. It is independent from the prototype/skill generation loop — it does not spawn an agent.
 
-### 1. Create your IR file
+### 1. Scaffold a starter project
 
-Create `my-app/application.ir.json`:
-
-```json
-{
-  "schemaVersion": "1.0.0",
-  "applicationId": "my-app",
-  "bundle": {
-    "name": "My Application",
-    "applicationId": "my-app"
-  },
-  "frontend": {
-    "screens": [{ "id": "home", "title": "Home" }],
-    "nodes": [
-      { "id": "submit-btn", "kind": "button", "level": "atomic" }
-    ]
-  }
-}
+```bash
+od app init --project ./my-app          # --template crud|marketing (default: crud)
 ```
+
+Writes `application.ir.json`, the five `ir/*.ir.json` modules, and `projection.config.json`. It refuses to overwrite an existing bundle. Edit the IR files to describe your application — entities, capabilities, boundary, persistence, frontend.
 
 ### 2. Start the daemon
 
@@ -306,21 +293,21 @@ Create `my-app/application.ir.json`:
 pnpm tools-dev start daemon   # starts daemon on port 7457 by default
 ```
 
-### 3. List available targets
+### 3. Validate and plan
 
 ```bash
-od compiler targets
+od app validate --project ./my-app                    # read-only verdict + diagnostics
+od app plan --project ./my-app --target react-vite    # plan hash + file plan, no output written
 ```
 
-Outputs all registered target adapters: `html-static`, `react-vite`, `nextjs-app`, `sveltekit`, `mock-local`, `next-server-actions`, `sqlite-better-sqlite3`.
-
-### 4. Compile
+### 4. Compile and verify
 
 ```bash
-od compiler compile --project ./my-app --target react-vite --wait
+od app compile --project ./my-app --target react-vite --follow
+od app verify --project ./my-app --target react-vite
 ```
 
-`--wait` polls the run until it completes and prints the result. Drop `--wait` for fire-and-forget. Add `--json` for machine-readable output.
+`compile` runs the full pipeline and polls until the run finishes; `--follow` additionally streams run events over SSE. `verify` compiles and reports the verification evidence. Add `--json` to any subcommand for machine-readable output. `od compiler …` still works as a compatibility alias for the older `targets`/`compile` surface.
 
 ### 5. Use the output
 
@@ -336,7 +323,7 @@ The same `application.ir.json` compiles to every target:
 
 ```bash
 for target in html-static react-vite nextjs-app sveltekit; do
-  od compiler compile --project ./my-app --target $target --wait
+  od app compile --project ./my-app --target $target
 done
 ```
 

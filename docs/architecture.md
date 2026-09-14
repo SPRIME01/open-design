@@ -319,13 +319,26 @@ application.ir.json
 
 ```
 GET  /api/compiler/targets            ← list registered target adapters
+POST /api/compiler/ir                 ← raw IR documents as loaded (no validation)
+                                          body: { projectRoot }
+POST /api/compiler/validate           ← validation verdict + diagnostics (read-only)
+                                          body: { projectRoot }
+                                          invalid IR is a 200 with valid:false
+POST /api/compiler/plan               ← plan-only pass (no generated/ writes)
+                                          body: { projectRoot, targetId }
+                                          returns: status, planHash, evidenceRefs
 POST /api/compiler/runs               ← start an async compile run
                                           body: { projectRoot, targetId }
                                           returns: { runId, status }
-GET  /api/compiler/runs/:runId        ← poll run status and diagnostics
+GET  /api/compiler/runs/:runId        ← poll run status, planHash, evidenceRefs
+POST /api/compiler/runs/:runId/approve  ← hash-bound plan approval
+                                          body: { planHash }
+                                          wrong hash → 409 PLAN_HASH_MISMATCH
+POST /api/compiler/runs/:runId/cancel   ← cancel a run
+GET  /api/compiler/runs/:runId/events   ← SSE stream of run progress events
 ```
 
-Runs are fully async. The POST endpoint returns immediately with a `runId`; the client polls `/api/compiler/runs/:runId` until `status` is `"succeeded"`, `"failed"`, or `"cancelled"`.
+Runs are fully async. The POST endpoint returns immediately with a `runId`; the client polls `/api/compiler/runs/:runId` until `status` is `"succeeded"`, `"failed"`, or `"cancelled"`. A succeeded run carries `planHash` plus `evidenceRefs` pointing at the on-disk plan, manifest, and verification evidence.
 
 ### 9.4 CLI and MCP surface
 
