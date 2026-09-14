@@ -436,6 +436,12 @@ importers:
       '@ffprobe-installer/ffprobe':
         specifier: 2.1.2
         version: 2.1.2
+      '@open-design/application-compiler':
+        specifier: workspace:*
+        version: link:../packages/application-compiler
+      '@open-design/application-targets':
+        specifier: workspace:*
+        version: link:../packages/application-targets
       '@open-design/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
