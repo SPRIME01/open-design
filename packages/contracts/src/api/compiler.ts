@@ -123,6 +123,52 @@ export interface CompilerRunStatus {
   startedAt: string;
   completedAt?: string;
   evidenceRefs?: CompilerRunEvidenceRefs;
+  /**
+   * Per-phase wall-clock durations in milliseconds, keyed by phase name
+   * (`validation`/`lowering`/`planning`/`write`/`verification`). Populated by
+   * the daemon when the run reaches a terminal status; absent before that and
+   * on runs that terminated before any phase completed.
+   */
+  phaseDurationsMs?: Record<string, number>;
+}
+
+/** Aggregate phase-duration stats from the daemon's in-memory compiler metrics tracker. */
+export interface CompilerPhaseDurationStats {
+  /** Duration of the most recent completed observation of this phase, in milliseconds. */
+  lastMs: number;
+  /** Sum of every observed duration of this phase, in milliseconds. */
+  cumulativeMs: number;
+}
+
+/** Per-target terminal-outcome tallies backing the target compile success rate metric. */
+export interface CompilerTargetSuccessStats {
+  succeeded: number;
+  total: number;
+}
+
+/**
+ * Snapshot of the daemon's in-process compiler metrics (spec §12.3 "Logs,
+ * Metrics, and Traces"). Counters reset when the daemon process restarts —
+ * this is a local observability surface, not a metrics server.
+ */
+export interface CompilerMetricsSnapshot {
+  /** Compiler runs keyed by terminal status (`succeeded`/`failed`/`cancelled`). */
+  runsByTerminalStatus: Record<string, number>;
+  /** Wall-clock durations per compiler phase (validation/lowering/planning/write/verification). */
+  phaseDurationsMs: Record<string, CompilerPhaseDurationStats>;
+  /**
+   * Terminal outcomes per target id. Cancelled runs are excluded: an
+   * interrupted compile says nothing about whether the target works.
+   */
+  targetSuccessRate: Record<string, CompilerTargetSuccessStats>;
+  /** Deterministic no-op tallies: recompiles that produced an empty plan vs. total recompiles. */
+  noopRate: { noops: number; recompiles: number };
+  /** Cumulative generated-file conflicts seen across compile plans. */
+  conflictCount: number;
+  /** Cumulative unsupported/degraded semantics seen across compile plans. */
+  degradedSemanticCount: number;
+  /** Verification step failures keyed by heuristic category (build/runtime/a11y/migration). */
+  verificationFailureCategory: Record<string, number>;
 }
 
 export interface CompilerRunResult {

@@ -8,15 +8,25 @@ import {
   PlanApplicationResult,
   ApplicationCompilerInput,
 } from "@open-design/application-compiler";
+import { computeSemanticHash } from "@open-design/application-ir";
 import { registerAllBuiltInAdapters } from "@open-design/application-targets";
 import { runPersistence } from "./run-persistence.js";
 import { ProjectWriter } from "./project-writer.js";
 import { runVerificationStep } from "./verification-runner.js";
+import { logCompilerEvent, CompilerLogEvent, CompilerLogEventName } from "./run-logger.js";
+import { runMetrics } from "./run-metrics.js";
 import { CompilerRunEvidenceRefs, CompilerRunStatus } from "@open-design/contracts";
 
 registerAllBuiltInAdapters();
 
 const runListeners = new Map<string, ((event: any) => void)[]>();
+
+/**
+ * projectRoot/targetId per run id. The run record (CompilerRunStatus) does not
+ * carry them, but approval and cancel logs need the same §12.3 context the
+ * in-flight run logs have. In-memory like the run store; never persisted.
+ */
+const runContexts = new Map<string, { projectRoot: string; targetId: string }>();
 
 export type CompilerServiceErrorCode = "INPUT_NOT_FOUND" | "PLAN_HASH_MISMATCH";
 
@@ -181,6 +191,14 @@ export const compilerService = {
       startedAt,
     };
     runPersistence.save(status);
+    runContexts.set(runId, { projectRoot, targetId });
+    logCompilerEvent({
+      event: "run_created",
+      compiler_run_id: runId,
+      project_id: projectRoot,
+      target_id: targetId,
+      phase: "validation",
+    });
 
     // Run compile asynchronously
     this.executeRun(projectRoot, targetId, runId).catch(console.error);
@@ -266,7 +284,22 @@ export const compilerService = {
     if (!run) {
       throw new CompilerServiceError("INPUT_NOT_FOUND", `Compiler run '${runId}' not found.`);
     }
+    const ctx = runContexts.get(runId);
+    const logApproval = (event: CompilerLogEventName, extra: Record<string, unknown> = {}) =>
+      logCompilerEvent({
+        event,
+        compiler_run_id: runId,
+        project_id: ctx?.projectRoot,
+        target_id: ctx?.targetId,
+        phase: "planning",
+        ...extra,
+      });
+    logApproval("approval_requested", { plan_hash: planHash });
     if (!run.planHash || run.planHash !== planHash) {
+      logApproval("approval_rejected", {
+        plan_hash: planHash,
+        diagnostic_code: "PLAN_HASH_MISMATCH",
+      });
       throw new CompilerServiceError(
         "PLAN_HASH_MISMATCH",
         run.planHash
@@ -276,7 +309,48 @@ export const compilerService = {
     }
     run.approvedPlanHash = planHash;
     runPersistence.save(run);
+    logApproval("approval_resolved", { plan_hash: planHash });
     this.emitEvent(runId, "approved", run);
+    return run;
+  },
+
+  /**
+   * Mark a run cancelled. Preserves the historical last-writer-wins behavior
+   * (the status is set even if the run already terminated); the metrics
+   * terminal count and run_terminal log fire only for runs that were still
+   * non-terminal, so a completed run cannot be counted twice.
+   */
+  cancel(runId: string): CompilerRunStatus {
+    const run = runPersistence.get(runId);
+    if (!run) {
+      throw new CompilerServiceError("INPUT_NOT_FOUND", `Compiler run '${runId}' not found.`);
+    }
+    const wasTerminal =
+      run.status === "succeeded" || run.status === "failed" || run.status === "cancelled";
+    let recorded: Record<string, number> | undefined;
+    if (!wasTerminal) {
+      recorded = runMetrics.recordTerminal(runId, "cancelled");
+      if (recorded && Object.keys(recorded).length > 0) {
+        run.phaseDurationsMs = recorded;
+      }
+    }
+    run.status = "cancelled";
+    run.completedAt = new Date().toISOString();
+    runPersistence.save(run);
+    this.emitEvent(runId, "cancelled", run);
+    if (!wasTerminal) {
+      const ctx = runContexts.get(runId);
+      logCompilerEvent({
+        event: "run_terminal",
+        compiler_run_id: runId,
+        project_id: ctx?.projectRoot,
+        target_id: ctx?.targetId,
+        phase: run.phase,
+        terminal_status: "cancelled",
+        duration_ms: Date.parse(run.completedAt) - Date.parse(run.startedAt),
+        phase_durations_ms: recorded ?? {},
+      });
+    }
     return run;
   },
 
@@ -284,12 +358,58 @@ export const compilerService = {
     const status = runPersistence.get(runId);
     if (!status) return;
 
+    // §12.3 log context accumulated as the run learns it. Fields stay absent
+    // until known (a failed-validation run never learns its hashes/adapters).
+    const logCtx: Pick<
+      CompilerLogEvent,
+      "application_id" | "source_hash" | "config_hash" | "plan_hash" | "adapters"
+    > = {};
+    const log = (event: CompilerLogEventName, extra: Record<string, unknown> = {}) =>
+      logCompilerEvent({
+        event,
+        compiler_run_id: runId,
+        project_id: projectRoot,
+        target_id: targetId,
+        ...logCtx,
+        ...extra,
+      });
+
     const emitPhase = (phase: CompilerRunStatus["phase"], statusStr: CompilerRunStatus["status"], progress: number) => {
       status.phase = phase;
       status.status = statusStr;
       status.progress = progress;
       runPersistence.save(status);
       this.emitEvent(runId, "progress", status);
+      runMetrics.beginPhase(runId, phase);
+    };
+
+    /**
+     * Shared terminal tail: stamps status/completedAt, closes phase timings,
+     * counts the terminal metric (once per run — runMetrics enforces it),
+     * populates phaseDurationsMs on the run record, and emits the run_terminal
+     * structured log line with terminal status, per-phase durations, and the
+     * first diagnostic code when the run failed.
+     */
+    const finishRun = (
+      terminal: "failed" | "succeeded",
+      diagnostics?: CompilerRunStatus["diagnostics"]
+    ) => {
+      status.status = terminal;
+      if (diagnostics) {
+        status.diagnostics = diagnostics;
+      }
+      status.completedAt = new Date().toISOString();
+      const recorded = runMetrics.recordTerminal(runId, terminal, targetId);
+      if (recorded && Object.keys(recorded).length > 0) {
+        status.phaseDurationsMs = recorded;
+      }
+      log("run_terminal", {
+        terminal_status: terminal,
+        phase: diagnostics?.[0]?.phase ?? status.phase,
+        diagnostic_code: diagnostics?.[0]?.code,
+        duration_ms: Date.parse(status.completedAt) - Date.parse(status.startedAt),
+        phase_durations_ms: recorded ?? {},
+      });
     };
 
     try {
@@ -297,8 +417,17 @@ export const compilerService = {
 
       const { input, config } = loadCompilerInput(projectRoot, targetId);
       const priorManifest = loadPriorManifest(projectRoot, targetId);
+      if (typeof input.bundle?.applicationId === "string") {
+        logCtx.application_id = input.bundle.applicationId;
+      }
+      // Same hash function compile() uses for manifest.configHash, so the log
+      // lines agree with the emitted manifest on every run that gets one.
+      logCtx.config_hash = computeSemanticHash(config);
+      runMetrics.endPhase(runId, "validation");
+      log("validation_completed", { phase: "validation" });
 
       emitPhase("lowering", "lowering", 30);
+      log("lowering_started", { phase: "lowering" });
 
       const outputRoot = resolveOutputRoot(projectRoot, config, targetId);
       const currentFilesFetcher = makeCurrentFilesFetcher(outputRoot);
@@ -318,41 +447,59 @@ export const compilerService = {
           currentFilesFetcher,
         }
       );
+      runMetrics.endPhase(runId, "lowering");
+      logCtx.source_hash = compileRes.manifest?.sourceHash;
+      logCtx.plan_hash = compileRes.plan?.planHash;
+      logCtx.adapters = compileRes.plan?.adapterVersions;
+      log("lowering_completed", { phase: "lowering" });
 
       if (compileRes.status === "failed-validation" || compileRes.status === "failed-lowering" || compileRes.status === "failed-planning") {
-        status.status = "failed";
-        status.diagnostics = compileRes.diagnostics.map((d: any) => ({
+        const diagnostics = compileRes.diagnostics.map((d: any) => ({
           ...d,
           phase: d.phase as any,
           severity: d.severity as any,
         }));
-        status.completedAt = new Date().toISOString();
+        finishRun("failed", diagnostics);
         writeRunDiagnostics(projectRoot, runId, status);
         runPersistence.save(status);
         this.emitEvent(runId, "failure", status);
         return;
       }
 
+      // Phase: Planning — the plan exists now; evaluating it (blocked /
+      // conflicted decisions, hash exposure for approval) is this phase.
+      emitPhase("planning", "planning", 50);
+
+      if (compileRes.plan) {
+        runMetrics.recordPlanObservations(compileRes.plan);
+        log("plan_created", {
+          phase: "planning",
+          conflict_count: compileRes.plan.conflicts.length,
+          degradation_count: compileRes.plan.degradations.length,
+          noop:
+            compileRes.plan.creates.length === 0 &&
+            compileRes.plan.modifies.length === 0 &&
+            compileRes.plan.deletes.length === 0,
+          files_planned: compileRes.plan.estimatedOutputFiles.length,
+        });
+      }
+
       // If planning succeeded, but blocked or conflicted, we report it
       if (compileRes.status === "blocked" || compileRes.status === "conflicted") {
-        status.status = "failed";
-        if (compileRes.plan?.planHash) {
-          status.planHash = compileRes.plan.planHash;
-        }
-        status.diagnostics = [
+        finishRun("failed", [
           {
             code: compileRes.status === "blocked" ? "unresolved_references" : "file_conflicts",
             message: `Compile blocked: ${compileRes.status === "blocked" ? "Unresolved references in adapters." : "Unresolved conflicts in manual files."}`,
             severity: "error",
             phase: "planning",
           }
-        ];
-        status.completedAt = new Date().toISOString();
+        ]);
         writeRunDiagnostics(projectRoot, runId, status);
         runPersistence.save(status);
         this.emitEvent(runId, "failure", status);
         return;
       }
+      runMetrics.endPhase(runId, "planning");
 
       // Phase: Writing files
       emitPhase("write", "writing", 60);
@@ -363,6 +510,11 @@ export const compilerService = {
       fs.mkdirSync(outputRoot, { recursive: true });
       fs.writeFileSync(path.join(outputRoot, "manifest.json"), JSON.stringify(compileRes.manifest, null, 2), "utf8");
       fs.writeFileSync(path.join(outputRoot, "plan.json"), JSON.stringify(compileRes.plan, null, 2), "utf8");
+      runMetrics.endPhase(runId, "write");
+      log("write_committed", {
+        phase: "write",
+        files_written: compileRes.fileSet!.files.length,
+      });
 
       // Phase: Verification
       emitPhase("verification", "verifying", 80);
@@ -371,10 +523,15 @@ export const compilerService = {
 
       if (compileRes.plan?.verificationPlanned) {
         for (const step of compileRes.plan.verificationPlanned) {
-          const stepRes = await runVerificationStep(step.name, step.command, outputRoot);
+          const stepRes = await runVerificationStep(step.name, step.command, outputRoot, {
+            runId,
+            projectId: projectRoot,
+            targetId,
+          });
           verifyOutputLogs.push(stepRes.output);
           if (!stepRes.success) {
             verifySuccess = false;
+            runMetrics.recordVerificationFailure(step.name);
           }
         }
       }
@@ -404,18 +561,17 @@ export const compilerService = {
         manifestPath: path.join(outputRoot, "manifest.json"),
         evidencePath,
       };
+      runMetrics.endPhase(runId, "verification");
 
       if (!verifySuccess) {
-        status.status = "failed";
-        status.diagnostics = [
+        finishRun("failed", [
           {
             code: "verification_failed",
             message: `One or more verification steps failed. Output logs:\n${verifyOutputLogs.join("\n")}`,
             severity: "error",
             phase: "verification",
           }
-        ];
-        status.completedAt = new Date().toISOString();
+        ]);
         writeRunDiagnostics(projectRoot, runId, status);
         runPersistence.save(status);
         this.emitEvent(runId, "failure", status);
@@ -423,27 +579,24 @@ export const compilerService = {
       }
 
       // Succeeded!
-      status.status = "succeeded";
       status.phase = "idle";
       status.progress = 100;
       if (compileRes.plan?.planHash) {
         status.planHash = compileRes.plan.planHash;
       }
-      status.completedAt = new Date().toISOString();
+      finishRun("succeeded");
       runPersistence.save(status);
       this.emitEvent(runId, "success", status);
 
     } catch (err: any) {
-      status.status = "failed";
-      status.diagnostics = [
+      finishRun("failed", [
         {
           code: "unexpected_error",
           message: `Unexpected compilation error: ${err.message}`,
           severity: "error",
           phase: (status.phase === "idle" ? "validation" : status.phase) as any,
         }
-      ];
-      status.completedAt = new Date().toISOString();
+      ]);
       try {
         writeRunDiagnostics(projectRoot, runId, status);
       } catch (_) {}

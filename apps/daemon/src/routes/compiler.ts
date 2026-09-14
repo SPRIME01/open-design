@@ -2,10 +2,12 @@ import type { Express, Response } from 'express';
 import type { RouteDeps } from '../server-context.js';
 import { compilerService, CompilerServiceError } from '../compiler/compiler-service.js';
 import { runPersistence } from '../compiler/run-persistence.js';
+import { runMetrics } from '../compiler/run-metrics.js';
 import { adapterRegistry } from '@open-design/application-compiler';
 import type {
   CompilerApproveRequest,
   CompilerIrRequest,
+  CompilerMetricsSnapshot,
   CompilerPlanRequest,
   CompilerValidateRequest,
 } from '@open-design/contracts';
@@ -92,6 +94,16 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
     }
   });
 
+  app.get('/api/compiler/metrics', (_req, res) => {
+    // In-process aggregate metrics (spec §12.3): counters + phase durations
+    // reset on daemon restart. Read-only, no run context required.
+    try {
+      res.json(runMetrics.snapshot() satisfies CompilerMetricsSnapshot);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL', `Failed to snapshot compiler metrics: ${err.message}`);
+    }
+  });
+
   app.post('/api/compiler/runs', async (req, res) => {
     try {
       const { projectRoot, targetId, runId } = req.body as { projectRoot: string; targetId: string; runId?: string };
@@ -119,17 +131,13 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
 
   app.post('/api/compiler/runs/:id/cancel', (req, res) => {
     try {
-      const run = runPersistence.get(req.params.id);
-      if (!run) {
-        return sendApiError(res, 404, 'NOT_FOUND', `Compiler run '${req.params.id}' not found.`);
-      }
-      run.status = "cancelled";
-      run.completedAt = new Date().toISOString();
-      runPersistence.save(run);
-      compilerService.emitEvent(run.runId, "cancelled", run);
-      res.json(run);
+      // Service owns the cancelled-terminal metrics + run_terminal log; the
+      // response shape (the updated run, 404 for unknown ids) is unchanged.
+      res.json(compilerService.cancel(req.params.id));
     } catch (err: any) {
-      sendApiError(res, 500, 'INTERNAL', `Failed to cancel compiler run: ${err.message}`);
+      if (!sendCompilerServiceError(res, err)) {
+        sendApiError(res, 500, 'INTERNAL', `Failed to cancel compiler run: ${err.message}`);
+      }
     }
   });
 
