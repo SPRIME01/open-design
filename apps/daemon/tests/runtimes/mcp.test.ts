@@ -128,6 +128,12 @@ test('MCP-capable agents can discover equivalent live artifact and connector too
   assert.deepEqual(Object.keys(updateProperties).sort(), ['artifactId', 'input', 'provenanceJson', 'templateHtml']);
   assert.deepEqual(Object.keys(connectorsListProperties).sort(), ['useCase']);
 
+  // R2: compile accepts the conflict-resolution pass-through (force
+  // documents the approvedPlanHash requirement in the schema itself).
+  const compileProperties = compileTool.inputSchema.properties as Record<string, unknown>;
+  assert.deepEqual(Object.keys(compileProperties).sort(), ['approvedPlanHash', 'conflictResolution', 'projectRoot', 'targetId']);
+  assert.match(String((compileProperties.conflictResolution as { description?: unknown })?.description), /awaiting_approval/u);
+  assert.match(compileTool.description, /awaiting_approval/u);
 });
 
 test('live artifact MCP connector list forwards daily digest use case to daemon tools', async () => {

@@ -77,6 +77,15 @@ const COMPILE_TARGET_INPUT_SCHEMA = {
   properties: {
     projectRoot: { type: 'string', description: 'Defaults to the daemon process cwd (".").' },
     targetId: { type: 'string', minLength: 1 },
+    conflictResolution: {
+      type: 'string',
+      enum: ['block', 'plan-only', 'force'],
+      description: 'How generated-file conflicts resolve (overrides the target config\'s conflictPolicy). "force" overwrites manually-changed generated files and REQUIRES an approved plan hash: without approvedPlanHash the run pauses in awaiting_approval (no writes) until the hash is approved.',
+    },
+    approvedPlanHash: {
+      type: 'string',
+      description: 'Pre-approved plan hash for a force run, from a prior plan_application_target call with the same conflictResolution. Only meaningful with conflictResolution "force".',
+    },
   },
 } satisfies JsonObject;
 
@@ -197,7 +206,7 @@ export function createLiveArtifactsMcpTools(): McpTool[] {
     {
       name: 'compile_application_target',
       description:
-        'Run the full compilation pipeline for a target and poll the run until it reaches a terminal state (succeeded/failed/cancelled). Write-capable: it writes generated output under the project\'s generated/<target>/ directory and executes the verification steps the adapter planned. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app compile --project <path> --target <targetId>`.',
+        'Run the full compilation pipeline for a target and poll the run until it reaches a terminal state (succeeded/failed/cancelled). Write-capable: it writes generated output under the project\'s generated/<target>/ directory and executes the verification steps the adapter planned. conflictResolution selects how generated-file conflicts resolve ("block" | "plan-only" | "force"); "force" requires an approved plan hash — without approvedPlanHash the run pauses in awaiting_approval (status awaiting_approval with the planHash to approve, no files written) instead of overwriting. POSIX equivalent: `"$OD_NODE_BIN" "$OD_BIN" app compile --project <path> --target <targetId> --conflict-resolution <mode> --approve-plan <hash>`.',
       inputSchema: COMPILE_TARGET_INPUT_SCHEMA,
       annotations: {
         title: 'Compile application target',
@@ -366,13 +375,29 @@ async function callTool(name: string, args: JsonObject): Promise<unknown> {
   if (name === 'compile_application_target') {
     const projectRoot = typeof args.projectRoot === 'string' ? args.projectRoot : '.';
     const targetId = args.targetId;
+    const conflictResolution =
+      args.conflictResolution === 'block' || args.conflictResolution === 'plan-only' || args.conflictResolution === 'force'
+        ? args.conflictResolution
+        : undefined;
+    const approvedPlanHash = typeof args.approvedPlanHash === 'string' ? args.approvedPlanHash : undefined;
     const startRes = await requestJson('/api/compiler/runs', {
       method: 'POST',
-      body: JSON.stringify({ projectRoot, targetId }),
+      body: JSON.stringify({
+        projectRoot,
+        targetId,
+        ...(conflictResolution ? { conflictResolution } : {}),
+        ...(approvedPlanHash ? { approvedPlanHash } : {}),
+      }),
     }) as any;
     const runId = startRes.runId;
     let status = startRes.status;
-    while (status.status !== 'succeeded' && status.status !== 'failed' && status.status !== 'cancelled') {
+    // awaiting_approval is also a stop state: a force run without an
+    // approved hash pauses there indefinitely, so return the run record
+    // (it carries the planHash to approve) instead of polling forever.
+    while (
+      status.status !== 'succeeded' && status.status !== 'failed' && status.status !== 'cancelled'
+      && status.status !== 'awaiting_approval'
+    ) {
       await new Promise(resolve => setTimeout(resolve, 500));
       status = await requestJson(`/api/compiler/runs/${runId}`, { method: 'GET' });
     }

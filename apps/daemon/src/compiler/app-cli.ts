@@ -9,8 +9,12 @@
 //   0 — success
 //   1 — run/validation failure or a daemon HTTP error response
 //   2 — usage error (unknown flag/subcommand, missing required flag, init
-//       overwrite refusal, unresolvable --target)
+//       overwrite refusal, unresolvable --target, --approve-plan without
+//       --conflict-resolution force)
 //   3 — daemon unreachable (connection error)
+//   4 — the compile paused in awaiting_approval (force conflict resolution
+//       without an approved plan hash); approve the printed plan hash with
+//       `od app approve` and re-run
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -34,9 +38,28 @@ const EXIT_OK = 0;
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
 const EXIT_DAEMON = 3;
+/** Compile paused in awaiting_approval — approve the plan hash, then re-run. */
+const EXIT_AWAITING_APPROVAL = 4;
 
 const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 const TERMINAL_EVENT_TYPES = new Set(['success', 'failure', 'cancelled']);
+const AWAITING_APPROVAL_EVENT_TYPE = 'awaiting_approval';
+
+const CONFLICT_RESOLUTIONS = ['block', 'plan-only', 'force'] as const;
+type ConflictResolutionFlag = (typeof CONFLICT_RESOLUTIONS)[number];
+
+function parseConflictResolution(value: string): ConflictResolutionFlag {
+  if ((CONFLICT_RESOLUTIONS as readonly string[]).includes(value)) {
+    return value as ConflictResolutionFlag;
+  }
+  console.error(`Error: --conflict-resolution must be one of: ${CONFLICT_RESOLUTIONS.join(', ')}.`);
+  process.exit(EXIT_USAGE);
+}
+
+/** True when a poll/SSE follow loop should stop: terminal or paused for approval. */
+function runReachedStopState(status: string): boolean {
+  return isTerminalRunStatus(status) || status === 'awaiting_approval';
+}
 
 /** Every string flag accepted anywhere under `od app` (union across subcommands). */
 export const APP_STRING_FLAGS = new Set([
@@ -45,6 +68,10 @@ export const APP_STRING_FLAGS = new Set([
   'target',
   'template',
   'run',
+  'conflict-resolution',
+  'approve-plan',
+  'plan-hash',
+  'resolution',
 ]);
 /** Every boolean flag accepted anywhere under `od app` (union across subcommands). */
 export const APP_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'follow', 'wait']);
@@ -54,9 +81,11 @@ const GLOBAL_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
 const INIT_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'project', 'template']);
 const VALIDATE_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'project']);
 const TARGET_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS]);
-const PLAN_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'project', 'target']);
+const PLAN_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'project', 'target', 'conflict-resolution']);
 const RUN_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'run']);
 const METRICS_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS]);
+const COMPILE_STRING_FLAGS = new Set([...PLAN_STRING_FLAGS, 'approve-plan']);
+const APPROVE_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'plan-hash', 'resolution']);
 const COMPILE_BOOLEAN_FLAGS = new Set([...GLOBAL_BOOLEAN_FLAGS, 'follow', 'wait']);
 
 type Flags = Record<string, string | boolean | undefined>;
@@ -237,26 +266,46 @@ Subcommands:
                                         existing application.ir.json.
   validate --project <dir> [--json]     Validate the bundle. Read-only.
   targets [list] [--json]               List target adapters. Read-only.
-  plan --project <dir> [--target <id>] [--json]
+  plan --project <dir> [--target <id>] [--conflict-resolution <block|plan-only|force>] [--json]
                                         Plan a compile without writing any
                                         output. Read-only (the daemon records
                                         the plan under compiler/plans/).
                                         --target may be omitted when
                                         projection.config.json declares
-                                        exactly one target.
-  compile --project <dir> [--target <id>] [--follow] [--wait] [--json]
+                                        exactly one target. Plan with the
+                                        same --conflict-resolution you will
+                                        compile with: the returned hash is
+                                        what --approve-plan presents.
+  compile --project <dir> [--target <id>] [--conflict-resolution <block|plan-only|force>] [--approve-plan <hash>] [--follow] [--wait] [--json]
                                         Run the full pipeline. WRITES FILES
                                         under the target outputRoot via the
-                                        daemon. A run may end blocked by
-                                        unresolved references or file
-                                        conflicts; approving a plan afterwards
+                                        daemon. --conflict-resolution
+                                        overrides the target config's
+                                        conflictPolicy; when the effective
+                                        resolution is 'force' (from the flag
+                                        OR the config) and no matching
+                                        --approve-plan hash is presented,
+                                        the run pauses in awaiting_approval
+                                        (exit 4) before any write — approve
+                                        the printed plan hash and re-run.
+                                        --approve-plan is only valid with
+                                        --conflict-resolution force. A run
+                                        may also end blocked by unresolved
+                                        references or file conflicts;
+                                        approving a plan afterwards
                                         requires the run's planHash through
                                         POST /api/compiler/runs/<id>/approve.
-  verify --project <dir> [--target <id>] [--follow] [--json]
+  verify --project <dir> [--target <id>] [--conflict-resolution <block|plan-only|force>] [--approve-plan <hash>] [--follow] [--json]
                                         Compile, then report verification
                                         evidence. WRITES FILES and EXECUTES
                                         the VERIFICATION commands the target
                                         adapter planned.
+  approve <run-id> --plan-hash <hash> [--resolution force] [--json]
+                                        Approve a run's plan hash. On a run
+                                        paused in awaiting_approval with a
+                                        matching hash (and --resolution
+                                        force) the run resumes and completes
+                                        the force compile.
   run get <run-id> [--json]             Fetch one compile run record.
                                         Read-only.
   conflicts list --run <run-id> [--json]
@@ -277,6 +326,15 @@ Common flags:
                         current directory).
   --target <id>         Target adapter ID (e.g. html-static). Optional when
                         projection.config.json declares exactly one target.
+  --conflict-resolution <mode>
+                        plan/compile/verify: how generated-file conflicts
+                        resolve (block | plan-only | force). Overrides the
+                        target config's conflictPolicy.
+  --approve-plan <hash>
+                        compile/verify: pre-approved plan hash for a force
+                        run (from 'od app plan --conflict-resolution
+                        force'). Only valid together with
+                        --conflict-resolution force.
   --daemon-url <url>    Daemon HTTP base (default: auto-discovered).
   --json                Stable machine-readable output.
   --follow              compile/verify: stream run events over SSE until the
@@ -286,7 +344,8 @@ Common flags:
                         completion behavior.
 
 Exit codes: 0 success; 1 run/validation failure or HTTP error; 2 usage error;
-3 daemon unreachable.`);
+3 daemon unreachable; 4 compile paused in awaiting_approval — run the printed
+'od app approve' command, then compile again.`);
 }
 
 // ---- init -------------------------------------------------------------------
@@ -423,13 +482,21 @@ export async function appPlan(rest: string[]): Promise<void> {
   }
   const projectRoot = requireProjectRoot(flags);
   const targetId = resolveTargetId(flags, projectRoot);
+  const conflictResolution =
+    typeof flags['conflict-resolution'] === 'string'
+      ? parseConflictResolution(flags['conflict-resolution'])
+      : undefined;
   const base = await daemonBaseUrl(flags);
   let resp: Response;
   try {
     resp = await fetch(`${base}/api/compiler/plan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectRoot, targetId }),
+      body: JSON.stringify({
+        projectRoot,
+        targetId,
+        ...(conflictResolution ? { conflictResolution } : {}),
+      }),
     });
   } catch (err) {
     connectError(base, err);
@@ -468,12 +535,39 @@ interface RunFlags extends Flags {
 }
 
 /**
+ * Resolve the conflict-resolution flags a compile/verify run carries.
+ * `--approve-plan` is only meaningful for a force run: presenting a hash
+ * without asking for force is a usage error (exit 2), not a silent no-op.
+ */
+function resolveRunConflictFlags(flags: Flags): {
+  conflictResolution?: ConflictResolutionFlag;
+  approvedPlanHash?: string;
+} {
+  const conflictResolution =
+    typeof flags['conflict-resolution'] === 'string'
+      ? parseConflictResolution(flags['conflict-resolution'])
+      : undefined;
+  const approvePlan = typeof flags['approve-plan'] === 'string' ? flags['approve-plan'].trim() : '';
+  if (approvePlan.length === 0) {
+    return conflictResolution ? { conflictResolution } : {};
+  }
+  if (conflictResolution !== 'force') {
+    console.error('Error: --approve-plan is only valid together with --conflict-resolution force.');
+    console.error('Plan first with: od app plan --conflict-resolution force');
+    process.exit(EXIT_USAGE);
+  }
+  return { conflictResolution, approvedPlanHash: approvePlan };
+}
+
+/**
  * Start a compile run and wait for it to reach a terminal state. `--wait` is
  * accepted as an alias of the default polling behavior (kept for the
  * documented `od compiler compile --wait` compatibility surface); `--follow`
  * streams the daemon's SSE run events and wins when both are given.
  * `streamed` reports whether the terminal state reached the caller through
  * SSE frames (false when plain-polling or a polling fallback produced it).
+ * A run that pauses in awaiting_approval also stops the wait; the caller
+ * decides how to surface it (compile/verify exit 4 with the approve hint).
  */
 async function startAndAwaitRun(
   flags: RunFlags,
@@ -481,13 +575,19 @@ async function startAndAwaitRun(
 ): Promise<{ run: CompilerRunStatus; streamed: boolean }> {
   const projectRoot = requireProjectRoot(flags);
   const targetId = resolveTargetId(flags, projectRoot);
+  const { conflictResolution, approvedPlanHash } = resolveRunConflictFlags(flags);
   const base = await daemonBaseUrl(flags);
   let resp: Response;
   try {
     resp = await fetch(`${base}/api/compiler/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectRoot, targetId }),
+      body: JSON.stringify({
+        projectRoot,
+        targetId,
+        ...(conflictResolution ? { conflictResolution } : {}),
+        ...(approvedPlanHash ? { approvedPlanHash } : {}),
+      }),
     });
   } catch (err) {
     connectError(base, err);
@@ -497,7 +597,7 @@ async function startAndAwaitRun(
     process.exit(EXIT_FAILURE);
   }
   const started = (await resp.json()) as { runId: string; status: CompilerRunStatus };
-  if (isTerminalRunStatus(started.status.status)) return { run: started.status, streamed: false };
+  if (runReachedStopState(started.status.status)) return { run: started.status, streamed: false };
   if (flags.follow === true) return followRunToTerminal(base, started.runId, flags);
   return { run: await pollRunToTerminal(base, started.runId, flags), streamed: false };
 }
@@ -524,7 +624,7 @@ async function pollRunToTerminal(
     if (flags.json !== true) {
       console.log(`[${run.phase}] status=${run.status} progress=${run.progress}%`);
     }
-    if (isTerminalRunStatus(run.status)) return run;
+    if (runReachedStopState(run.status)) return run;
   }
 }
 
@@ -536,6 +636,12 @@ function renderRunEvent(frame: { type?: unknown; data?: unknown }, flags: RunFla
   const data = frame?.data as CompilerRunStatus | undefined;
   if (frame?.type === 'progress' && data) {
     console.log(`[${data.phase}] status=${data.status} progress=${data.progress}%`);
+    return;
+  }
+  if (frame?.type === AWAITING_APPROVAL_EVENT_TYPE && data) {
+    console.log(
+      `[${data.phase}] status=${data.status} — plan approval required (${data.planHash ?? 'no plan hash'})`,
+    );
     return;
   }
   console.log(`[event] ${String(frame?.type ?? 'unknown')}`);
@@ -570,15 +676,15 @@ async function followRunToTerminal(
   const decoder = new TextDecoder();
   let buffer = '';
   let readerCancelled = false;
-  let terminalFromPoll: CompilerRunStatus | null = null;
+  let stopFromPoll: CompilerRunStatus | null = null;
   const safetyPoll = setInterval(() => {
     void (async () => {
       try {
         const r = await fetch(`${base}/api/compiler/runs/${encodeURIComponent(runId)}`);
         if (!r.ok) return;
         const run = (await r.json()) as CompilerRunStatus;
-        if (isTerminalRunStatus(run.status)) {
-          terminalFromPoll = run;
+        if (runReachedStopState(run.status)) {
+          stopFromPoll = run;
           if (!readerCancelled) {
             readerCancelled = true;
             void reader.cancel().catch(() => {});
@@ -616,12 +722,17 @@ async function followRunToTerminal(
           // consumer; callers must not reprint it.
           return { run: (frame.data ?? {}) as CompilerRunStatus, streamed: true };
         }
+        if (frame?.type === AWAITING_APPROVAL_EVENT_TYPE) {
+          // Same contract as the terminal frames: the pause frame carried
+          // the run object (including planHash) to the consumer already.
+          return { run: (frame.data ?? {}) as CompilerRunStatus, streamed: true };
+        }
       }
     }
     // Stream closed without a terminal frame (daemon restart or the run
     // finished before the stream attached): nothing about the terminal state
     // was streamed, so let the caller print the final record.
-    if (terminalFromPoll) return { run: terminalFromPoll, streamed: false };
+    if (stopFromPoll) return { run: stopFromPoll, streamed: false };
     return { run: await pollRunToTerminal(base, runId, flags), streamed: false };
   } finally {
     clearInterval(safetyPoll);
@@ -632,13 +743,43 @@ async function followRunToTerminal(
   }
 }
 
+/**
+ * Surface a run paused in awaiting_approval: print the planHash and the
+ * exact approve command, then exit 4 (distinct from 0/1/2/3 so scripts can
+ * branch on "needs approval" without parsing output). In --json mode the
+ * run object keeps stdout machine-readable; the guidance goes to stderr.
+ */
+function exitAwaitingApproval(
+  run: CompilerRunStatus,
+  label: string,
+  flags: RunFlags,
+  streamed: boolean,
+): never {
+  const planHash = run.planHash ?? '';
+  const approveCommand = `od app approve ${run.runId} --plan-hash ${planHash} --resolution force`;
+  if (flags.json === true) {
+    if (!streamed) {
+      process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
+    }
+    console.error(`${label} paused in awaiting_approval. Next: ${approveCommand}`);
+  } else {
+    console.log(`${label} paused with status: awaiting_approval (no files were written)`);
+    if (planHash) console.log(`Plan hash: ${planHash}`);
+    console.log(`Next: ${approveCommand}`);
+  }
+  process.exit(EXIT_AWAITING_APPROVAL);
+}
+
 export async function appCompile(rest: string[]): Promise<void> {
-  const flags = parseArgs(rest, PLAN_STRING_FLAGS, COMPILE_BOOLEAN_FLAGS) as RunFlags;
+  const flags = parseArgs(rest, COMPILE_STRING_FLAGS, COMPILE_BOOLEAN_FLAGS) as RunFlags;
   if (isHelp(flags)) {
     printAppHelp();
     process.exit(EXIT_OK);
   }
   const { run, streamed } = await startAndAwaitRun(flags, 'Compilation');
+  if (run.status === 'awaiting_approval') {
+    exitAwaitingApproval(run, 'Compilation', flags, streamed);
+  }
   if (flags.json === true) {
     // When the terminal state arrived as an SSE frame the consumer already
     // saw the final run object; reprinting it would duplicate the last line.
@@ -668,12 +809,15 @@ function loadVerificationEvidence(evidencePath: string | undefined): CompilerEvi
 }
 
 export async function appVerify(rest: string[]): Promise<void> {
-  const flags = parseArgs(rest, PLAN_STRING_FLAGS, COMPILE_BOOLEAN_FLAGS) as RunFlags;
+  const flags = parseArgs(rest, COMPILE_STRING_FLAGS, COMPILE_BOOLEAN_FLAGS) as RunFlags;
   if (isHelp(flags)) {
     printAppHelp();
     process.exit(EXIT_OK);
   }
-  const { run } = await startAndAwaitRun(flags, 'Verification');
+  const { run, streamed } = await startAndAwaitRun(flags, 'Verification');
+  if (run.status === 'awaiting_approval') {
+    exitAwaitingApproval(run, 'Verification', flags, streamed);
+  }
   const evidencePath = run.evidenceRefs?.evidencePath;
   const evidence = run.status === 'succeeded' ? loadVerificationEvidence(evidencePath) : null;
   const verificationRan = evidence != null && evidence.logs.length > 0;
@@ -772,6 +916,65 @@ async function appRun(rest: string[]): Promise<void> {
     process.exit(EXIT_USAGE);
   }
   return appRunGet(rest);
+}
+
+// ---- approve -----------------------------------------------------------------
+
+/**
+ * `od app approve <run-id> --plan-hash <hash> [--resolution force]`: the CLI
+ * twin of `POST /api/compiler/runs/:id/approve`. On a run paused in
+ * awaiting_approval, a matching hash with --resolution force resumes the
+ * run; on a completed run it records the (idempotent) approval. The daemon
+ * answers 409 PLAN_HASH_MISMATCH for a wrong hash, which exits 1 with the
+ * daemon's message.
+ */
+export async function appApprove(rest: string[]): Promise<void> {
+  // rest = ['<run-id>', ...flags] — approve takes the run id directly.
+  const flags = parseArgs(rest, APPROVE_STRING_FLAGS, GLOBAL_BOOLEAN_FLAGS);
+  if (isHelp(flags)) {
+    printAppHelp();
+    process.exit(EXIT_OK);
+  }
+  const runId = positionalArgs(rest, APPROVE_STRING_FLAGS)[0];
+  const planHash = typeof flags['plan-hash'] === 'string' ? flags['plan-hash'].trim() : '';
+  if (!runId || planHash.length === 0) {
+    console.error('Error: run id and --plan-hash <hash> are required.');
+    console.error('Usage: od app approve <run-id> --plan-hash <hash> [--resolution force] [--json]');
+    process.exit(EXIT_USAGE);
+  }
+  const resolution = typeof flags.resolution === 'string' ? flags.resolution.trim() : '';
+  if (resolution.length > 0 && resolution !== 'force') {
+    console.error("Error: --resolution must be 'force'.");
+    process.exit(EXIT_USAGE);
+  }
+  const base = await daemonBaseUrl(flags);
+  let resp: Response;
+  try {
+    resp = await fetch(`${base}/api/compiler/runs/${encodeURIComponent(runId)}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planHash,
+        ...(resolution === 'force' ? { resolution } : {}),
+      }),
+    });
+  } catch (err) {
+    connectError(base, err);
+  }
+  if (!resp.ok) {
+    console.error(`Failed to approve run ${runId}: ${await httpErrorMessage(resp)}`);
+    process.exit(EXIT_FAILURE);
+  }
+  const run = (await resp.json()) as CompilerRunStatus;
+  if (flags.json === true) {
+    process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
+    return;
+  }
+  console.log(`Run ${runId} approved (plan hash: ${planHash}).`);
+  if (run.status === 'queued' || run.status === 'validating') {
+    console.log('The run has resumed; poll it with:');
+    console.log(`  od app run get ${runId}`);
+  }
 }
 
 // ---- conflicts list -----------------------------------------------------------
@@ -951,6 +1154,8 @@ export async function runApp(
       return appCompile(rest);
     case 'verify':
       return appVerify(rest);
+    case 'approve':
+      return appApprove(rest);
     case 'run':
       return appRun(rest);
     case 'conflicts':

@@ -399,6 +399,8 @@ const PLUGIN_LIST_BOOLEAN_FLAGS = new Set([
 // binding guarantees initialization before the top-of-file SUBCOMMAND_MAP
 // dispatch, exactly like the hoisted `const` Sets around this comment.
 //   APP_STRING_FLAGS:  --daemon-url --project --target --template --run
+//                      --conflict-resolution --approve-plan --plan-hash
+//                      --resolution
 //   APP_BOOLEAN_FLAGS: --help/-h --json --follow --wait
 
 const SUBCOMMAND_MAP = {

@@ -20,6 +20,8 @@ import {
   acceptRunStatus,
   classifyApproveError,
   isApprovalConflictRun,
+  isAwaitingApprovalRun,
+  isRunActive,
   parseCompilerRunEvent,
   planSummaryCounts,
   verificationOutcome,
@@ -337,6 +339,63 @@ describe('ApplicationCompilerPanel', () => {
     ).length;
     expect(plansAfter).toBe(plansBefore + 1);
   });
+
+  it('renders awaiting_approval with the plan hash and approves with resolution force, then follows the resumed run', async () => {
+    const stub = installFetchStub({
+      plan: PLAN_SUCCEEDED,
+      run: runStatus({
+        status: 'awaiting_approval',
+        phase: 'planning',
+        progress: 50,
+        planHash: 'hash-plan-1',
+        diagnostics: [
+          {
+            code: 'approval_required',
+            message: "Conflict resolution 'force' would overwrite manually-changed generated file(s).",
+            severity: 'advisory',
+            phase: 'planning',
+          },
+        ],
+      }),
+      approveStatus: 200,
+    });
+    render(<ApplicationCompilerPanel />);
+    await loadProject();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('compiler-plan-button'));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('compiler-compile-button'));
+    });
+
+    // Paused state: status label, plan hash, approve + cancel affordances
+    // (awaiting_approval is not terminal — the panel keeps following).
+    expect(screen.getByTestId('compiler-run-status').textContent).toBe('Awaiting approval');
+    const awaiting = screen.getByTestId('compiler-awaiting-approval');
+    expect(awaiting.textContent).toContain('Paused before writing');
+    expect(awaiting.textContent).toContain('hash-plan-1');
+    expect(screen.getByTestId('compiler-approve-block')).toBeTruthy();
+    expect(screen.getByTestId('compiler-cancel-button')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('compiler-approve-button'));
+    });
+
+    // The approve call names resolution 'force' for a paused run.
+    const approveCall = stub.calls.find(
+      (call) => call.method === 'POST' && call.pathname === '/api/compiler/runs/run-1/approve',
+    );
+    expect(approveCall?.body).toEqual({ planHash: 'hash-plan-1', resolution: 'force' });
+    expect(screen.getByText('Plan approved.')).toBeTruthy();
+
+    // Daemon resumed the run: the polling floor picks the progress back up.
+    stub.state.run = runStatus({ status: 'writing', phase: 'write', progress: 60 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByTestId('compiler-run-status').textContent).toBe('Writing');
+  });
 });
 
 describe('run-flow helpers', () => {
@@ -361,6 +420,23 @@ describe('run-flow helpers', () => {
     expect(
       acceptRunStatus(runStatus({ status: 'cancelled' }), runStatus({ status: 'writing' })),
     ).toBe(false);
+  });
+
+  it('treats awaiting_approval as a valid, non-terminal, followable state', () => {
+    const awaiting = runStatus({ status: 'awaiting_approval', planHash: 'hash-plan-1' });
+    // SSE frames carrying the pause state parse and are accepted.
+    expect(parseCompilerRunEvent({ type: 'awaiting_approval', data: awaiting })).toEqual({
+      type: 'awaiting_approval',
+      run: awaiting,
+    });
+    expect(acceptRunStatus(runStatus({ status: 'validating' }), awaiting)).toBe(true);
+    // Not terminal: the panel keeps following, and approve/cancel apply.
+    expect(isRunActive(awaiting)).toBe(true);
+
+    expect(isAwaitingApprovalRun(awaiting)).toBe(true);
+    expect(isAwaitingApprovalRun(runStatus({ status: 'awaiting_approval' }))).toBe(false);
+    expect(isAwaitingApprovalRun(runStatus({ status: 'failed', planHash: 'hash-plan-1' }))).toBe(false);
+    expect(isAwaitingApprovalRun(null)).toBe(false);
   });
 
   it('classifies approve errors by HTTP status', () => {

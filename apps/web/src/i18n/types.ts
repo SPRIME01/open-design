@@ -5665,6 +5665,7 @@ export interface Dict {
   'compiler.status.planning': string;
   'compiler.status.writing': string;
   'compiler.status.verifying': string;
+  'compiler.status.awaiting_approval': string;
   'compiler.status.succeeded': string;
   'compiler.status.failed': string;
   'compiler.status.cancelled': string;
@@ -5677,6 +5678,7 @@ export interface Dict {
   'compiler.verification.failed': string;
   'compiler.approveButton': string;
   'compiler.approvedNotice': string;
+  'compiler.awaitingApprovalNotice': string;
   'compiler.approveStale': string;
   'compiler.replanButton': string;
   'compiler.approveError': string;

@@ -110,9 +110,13 @@ export function cancelCompilerRun(runId: string): Promise<CompilerRunStatus> {
 export function approveCompilerRun(
   runId: string,
   planHash: string,
+  options: { resolution?: 'force' } = {},
 ): Promise<CompilerRunStatus> {
   return post<CompilerRunStatus>(
     `/api/compiler/runs/${encodeURIComponent(runId)}/approve`,
-    { planHash },
+    {
+      planHash,
+      ...(options.resolution ? { resolution: options.resolution } : {}),
+    },
   );
 }

@@ -574,3 +574,257 @@ describe('od app CLI', () => {
     expect(JSON.parse(stdout)).toEqual(succeeded);
   });
 });
+
+describe('od app conflict-resolution surface', () => {
+  const awaitingRun = {
+    runId: 'run-await-1',
+    status: 'awaiting_approval',
+    phase: 'planning',
+    progress: 50,
+    diagnostics: [
+      {
+        code: 'approval_required',
+        message: "Conflict resolution 'force' would overwrite manually-changed generated file(s).",
+        severity: 'advisory',
+        phase: 'planning',
+      },
+    ],
+    planHash: 'sha256:need-approval',
+    startedAt: '2026-09-13T00:00:00.000Z',
+  };
+
+  function awaitingServer(opts: { sse?: boolean } = {}): Promise<{
+    server: http.Server;
+    baseUrl: string;
+    seen: SeenRequest[];
+  }> {
+    return startFakeServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/api/compiler/runs') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({
+          runId: 'run-await-1',
+          status: { ...awaitingRun, status: 'queued', phase: 'validation', progress: 0 },
+        }));
+        return;
+      }
+      if (opts.sse && req.method === 'GET' && req.url === '/api/compiler/runs/run-await-1/events') {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write(`data: ${JSON.stringify({ type: 'awaiting_approval', data: awaitingRun })}\n\n`);
+        res.end();
+        return;
+      }
+      if (req.method === 'GET' && req.url === '/api/compiler/runs/run-await-1') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(awaitingRun));
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not found' }));
+    }).then(({ server, baseUrl, seen }) => {
+      openServers.push(server);
+      return { server, baseUrl, seen };
+    });
+  }
+
+  it('compile --conflict-resolution force without approval sends the flag and exits 4 with the approve command', async () => {
+    const { baseUrl, seen } = await awaitingServer();
+
+    const failure = await runCliExpectFailure([
+      'app', 'compile',
+      '--project', daemonRoot,
+      '--target', 'html-static',
+      '--daemon-url', baseUrl,
+      '--conflict-resolution', 'force',
+    ]);
+    expect(failure.code).toBe(4);
+    expect(failure.stdout).toContain('awaiting_approval');
+    expect(failure.stdout).toContain('Plan hash: sha256:need-approval');
+    expect(failure.stdout).toContain(
+      'od app approve run-await-1 --plan-hash sha256:need-approval --resolution force',
+    );
+
+    const start = seen.find((r) => r.method === 'POST' && r.url === '/api/compiler/runs');
+    expect(start).toBeTruthy();
+    expect(JSON.parse(start!.body)).toEqual({
+      projectRoot: path.resolve(daemonRoot),
+      targetId: 'html-static',
+      conflictResolution: 'force',
+    });
+  }, 30_000);
+
+  it('compile --conflict-resolution force --json exits 4 with the run on stdout and the hint on stderr', async () => {
+    const { baseUrl } = await awaitingServer();
+
+    const failure = await runCliExpectFailure([
+      'app', 'compile',
+      '--project', daemonRoot,
+      '--target', 'html-static',
+      '--daemon-url', baseUrl,
+      '--conflict-resolution', 'force',
+      '--json',
+    ]);
+    expect(failure.code).toBe(4);
+    expect(JSON.parse(failure.stdout)).toEqual(awaitingRun);
+    expect(failure.stderr).toContain(
+      'od app approve run-await-1 --plan-hash sha256:need-approval --resolution force',
+    );
+  }, 30_000);
+
+  it('compile --follow exits 4 when the SSE stream delivers the awaiting_approval frame', async () => {
+    const { baseUrl } = await awaitingServer({ sse: true });
+
+    const failure = await runCliExpectFailure([
+      'app', 'compile',
+      '--project', daemonRoot,
+      '--target', 'html-static',
+      '--daemon-url', baseUrl,
+      '--conflict-resolution', 'force',
+      '--follow',
+    ]);
+    expect(failure.code).toBe(4);
+    expect(failure.stdout).toContain('plan approval required (sha256:need-approval)');
+    expect(failure.stdout).toContain(
+      'od app approve run-await-1 --plan-hash sha256:need-approval --resolution force',
+    );
+  }, 30_000);
+
+  it('compile --approve-plan without --conflict-resolution force is a usage error (exit 2)', async () => {
+    // No daemon needed: the flag-combination check fires before any HTTP.
+    for (const extra of [[], ['--conflict-resolution', 'plan-only'], ['--conflict-resolution', 'block']]) {
+      const failure = await runCliExpectFailure([
+        'app', 'compile',
+        '--project', daemonRoot,
+        '--target', 'html-static',
+        '--daemon-url', 'http://127.0.0.1:1',
+        '--approve-plan', 'sha256:abc',
+        ...extra,
+      ]);
+      expect(failure.code).toBe(2);
+      expect(failure.stderr).toContain('--approve-plan is only valid together with --conflict-resolution force');
+    }
+  }, 30_000);
+
+  it('compile rejects an invalid --conflict-resolution value with exit 2', async () => {
+    const failure = await runCliExpectFailure([
+      'app', 'compile',
+      '--project', daemonRoot,
+      '--target', 'html-static',
+      '--daemon-url', 'http://127.0.0.1:1',
+      '--conflict-resolution', 'obliterate',
+    ]);
+    expect(failure.code).toBe(2);
+    expect(failure.stderr).toContain('--conflict-resolution must be one of');
+  }, 30_000);
+
+  it('approve posts the plan hash with resolution force and prints the result', async () => {
+    const approvedRun = {
+      runId: 'run-appr-1',
+      status: 'queued',
+      phase: 'validation',
+      progress: 0,
+      diagnostics: [],
+      planHash: 'sha256:approved',
+      approvedPlanHash: 'sha256:approved',
+      startedAt: '2026-09-13T00:00:00.000Z',
+    };
+    const { server, baseUrl, seen } = await startFakeServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/api/compiler/runs/run-appr-1/approve') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(approvedRun));
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not found' }));
+    });
+    openServers.push(server);
+
+    const human = await runCli([
+      'app', 'approve', 'run-appr-1',
+      '--plan-hash', 'sha256:approved',
+      '--resolution', 'force',
+      '--daemon-url', baseUrl,
+    ]);
+    expect(human.stdout).toContain('Run run-appr-1 approved (plan hash: sha256:approved)');
+
+    const json = await runCli([
+      'app', 'approve', 'run-appr-1',
+      '--plan-hash', 'sha256:approved',
+      '--resolution', 'force',
+      '--daemon-url', baseUrl,
+      '--json',
+    ]);
+    expect(JSON.parse(json.stdout)).toEqual(approvedRun);
+
+    const approveCalls = seen.filter((r) => r.method === 'POST' && r.url === '/api/compiler/runs/run-appr-1/approve');
+    expect(approveCalls).toHaveLength(2);
+    for (const call of approveCalls) {
+      expect(JSON.parse(call.body)).toEqual({ planHash: 'sha256:approved', resolution: 'force' });
+    }
+  }, 30_000);
+
+  it('approve without --plan-hash or with a bad --resolution is a usage error', async () => {
+    const missing = await runCliExpectFailure(['app', 'approve', 'run-appr-1', '--daemon-url', 'http://127.0.0.1:1']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('--plan-hash <hash> are required');
+
+    const bad = await runCliExpectFailure([
+      'app', 'approve', 'run-appr-1',
+      '--plan-hash', 'sha256:approved',
+      '--resolution', 'plan-only',
+      '--daemon-url', 'http://127.0.0.1:1',
+    ]);
+    expect(bad.code).toBe(2);
+    expect(bad.stderr).toContain("--resolution must be 'force'");
+  }, 30_000);
+
+  it('plan passes --conflict-resolution through to POST /api/compiler/plan', async () => {
+    const planResult = {
+      status: 'succeeded',
+      diagnostics: [],
+      plan: {
+        planHash: 'sha256:force-plan',
+        targetId: 'html-static',
+        creates: [],
+        modifies: ['generated/html-static/index.html'],
+        deletes: [],
+        reuses: [],
+        conflicts: [{ path: 'index.html', classification: 'CONFLICT_MODIFIED_GENERATED_FILE', resolution: 'force' }],
+        unresolved: [],
+        degradations: [],
+        permissionsRequired: [],
+        commandsProposed: [],
+        verificationPlanned: [],
+      },
+      planHash: 'sha256:force-plan',
+      effectiveConflictResolution: 'force',
+    };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'od-app-plan-force-'));
+    fs.writeFileSync(path.join(dir, 'application.ir.json'), JSON.stringify({ schemaVersion: '1.0.0' }), 'utf8');
+    fs.writeFileSync(
+      path.join(dir, 'projection.config.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        application: 'application.ir.json',
+        targets: [{ id: 'html-static', adapter: 'html-static', mode: 'scaffold' }],
+      }),
+      'utf8',
+    );
+    const { server, baseUrl, seen } = await startFakeServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/api/compiler/plan') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(planResult));
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not found' }));
+    });
+    openServers.push(server);
+
+    const { stdout } = await runCli([
+      'app', 'plan', '--project', dir, '--daemon-url', baseUrl, '--conflict-resolution', 'force',
+    ]);
+    expect(stdout).toContain('Plan hash: sha256:force-plan');
+    const planReq = seen.find((r) => r.method === 'POST' && r.url === '/api/compiler/plan');
+    expect(JSON.parse(planReq!.body)).toEqual({ projectRoot: dir, targetId: 'html-static', conflictResolution: 'force' });
+  }, 30_000);
+});

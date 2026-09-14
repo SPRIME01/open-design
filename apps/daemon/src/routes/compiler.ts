@@ -1,6 +1,6 @@
 import type { Express, Response } from 'express';
 import type { RouteDeps } from '../server-context.js';
-import { compilerService, CompilerServiceError } from '../compiler/compiler-service.js';
+import { compilerService, CompilerServiceError, isConflictResolution } from '../compiler/compiler-service.js';
 import { runPersistence } from '../compiler/run-persistence.js';
 import { runMetrics } from '../compiler/run-metrics.js';
 import { adapterRegistry } from '@open-design/application-compiler';
@@ -9,6 +9,7 @@ import type {
   CompilerIrRequest,
   CompilerMetricsSnapshot,
   CompilerPlanRequest,
+  CompilerRunCreateRequest,
   CompilerValidateRequest,
 } from '@open-design/contracts';
 
@@ -81,11 +82,16 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
 
   app.post('/api/compiler/plan', async (req, res) => {
     try {
-      const { projectRoot, targetId } = req.body as CompilerPlanRequest;
+      const { projectRoot, targetId, conflictResolution } = req.body as CompilerPlanRequest;
       if (!projectRoot || !targetId) {
         return sendApiError(res, 400, 'BAD_REQUEST', "projectRoot and targetId are required fields.");
       }
-      const result = await compilerService.plan(projectRoot, targetId);
+      if (conflictResolution !== undefined && !isConflictResolution(conflictResolution)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', "conflictResolution must be one of: block, plan-only, force.");
+      }
+      const result = await compilerService.plan(projectRoot, targetId, {
+        ...(conflictResolution !== undefined ? { conflictResolution } : {}),
+      });
       res.json(result);
     } catch (err: any) {
       if (!sendCompilerServiceError(res, err)) {
@@ -106,11 +112,18 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
 
   app.post('/api/compiler/runs', async (req, res) => {
     try {
-      const { projectRoot, targetId, runId } = req.body as { projectRoot: string; targetId: string; runId?: string };
+      const { projectRoot, targetId, runId, conflictResolution, approvedPlanHash } =
+        req.body as CompilerRunCreateRequest;
       if (!projectRoot || !targetId) {
         return sendApiError(res, 400, 'BAD_REQUEST', "projectRoot and targetId are required fields.");
       }
-      const runStatus = await compilerService.startRun(projectRoot, targetId, runId);
+      if (conflictResolution !== undefined && !isConflictResolution(conflictResolution)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', "conflictResolution must be one of: block, plan-only, force.");
+      }
+      const runStatus = await compilerService.startRun(projectRoot, targetId, runId, {
+        ...(conflictResolution !== undefined ? { conflictResolution } : {}),
+        ...(approvedPlanHash !== undefined ? { approvedPlanHash } : {}),
+      });
       res.json({ runId: runStatus.runId, status: runStatus });
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL', `Failed to start compiler run: ${err.message}`);
@@ -143,16 +156,25 @@ export function registerCompilerRoutes(app: Express, ctx: RegisterCompilerRoutes
 
   app.post('/api/compiler/runs/:id/approve', (req, res) => {
     try {
+      // Body validation precedes the run lookup: a malformed approval is a
+      // 400 regardless of whether the run id exists.
+      const { planHash, resolution } = (req.body ?? {}) as CompilerApproveRequest;
+      if (!planHash) {
+        return sendApiError(res, 400, 'BAD_REQUEST', "planHash is a required field.");
+      }
+      if (resolution !== undefined && resolution !== 'force') {
+        return sendApiError(res, 400, 'BAD_REQUEST', "resolution must be 'force' when provided.");
+      }
       const run = runPersistence.get(req.params.id);
       if (!run) {
         return sendApiError(res, 404, 'NOT_FOUND', `Compiler run '${req.params.id}' not found.`);
       }
-      const { planHash } = (req.body ?? {}) as CompilerApproveRequest;
-      if (!planHash) {
-        return sendApiError(res, 400, 'BAD_REQUEST', "planHash is a required field.");
-      }
       // Hash-bound approval: a mismatch is a 409, not a silent mock pass-through.
-      res.json(compilerService.approve(req.params.id, planHash));
+      res.json(
+        compilerService.approve(req.params.id, planHash, {
+          ...(resolution !== undefined ? { resolution } : {}),
+        }),
+      );
     } catch (err: any) {
       if (!sendCompilerServiceError(res, err)) {
         sendApiError(res, 500, 'INTERNAL', `Failed to approve plan: ${err.message}`);

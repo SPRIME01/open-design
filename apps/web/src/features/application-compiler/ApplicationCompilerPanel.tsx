@@ -5,7 +5,9 @@
 // Compile (run progress over SSE with polling fallback) → terminal state
 // shows evidence paths + verification verdict. A run that stopped on a
 // blocked/conflicted plan offers hash-bound Approve, surfacing the daemon's
-// 409 PLAN_HASH_MISMATCH as a stale-plan message with a Re-plan affordance.
+// 409 PLAN_HASH_MISMATCH as a stale-plan message with a Re-plan affordance;
+// a force-resolution run paused in awaiting_approval shows the same Approve
+// affordance (sending resolution 'force'), and approving resumes it.
 //
 // The panel consumes ONLY the daemon HTTP/SSE surface through
 // ../features/application-compiler/compiler-api (contracts DTOs); it never
@@ -37,6 +39,7 @@ import {
   diagnosticRows,
   evidenceEntries,
   isApprovalConflictRun,
+  isAwaitingApprovalRun,
   isRunActive,
   isTerminalRunStatus,
   parseCompilerRunEvent,
@@ -56,6 +59,7 @@ const STATUS_KEYS: Record<CompilerRunStatus['status'], StatusKey> = {
   planning: 'compiler.status.planning',
   writing: 'compiler.status.writing',
   verifying: 'compiler.status.verifying',
+  awaiting_approval: 'compiler.status.awaiting_approval',
   succeeded: 'compiler.status.succeeded',
   failed: 'compiler.status.failed',
   cancelled: 'compiler.status.cancelled',
@@ -203,7 +207,12 @@ export function ApplicationCompilerPanel() {
     if (!run || !run.planHash) return;
     setApproveState('idle');
     try {
-      await approveCompilerRun(run.runId, run.planHash);
+      // A run paused in awaiting_approval is a force-resolution run: the
+      // approval must name resolution 'force' to resume it. A finished
+      // conflicted-blocked run keeps the plain hash-bound approve.
+      await approveCompilerRun(run.runId, run.planHash, {
+        ...(isAwaitingApprovalRun(run) ? { resolution: 'force' as const } : {}),
+      });
       setApproveState('approved');
     } catch (err) {
       setApproveState(classifyApproveError(err));
@@ -244,6 +253,7 @@ export function ApplicationCompilerPanel() {
 
   const planSummary = plan?.plan && planShowsSummary(plan.status) ? planSummaryCounts(plan.plan) : null;
   const approvalConflict = isApprovalConflictRun(run);
+  const awaitingApproval = isAwaitingApprovalRun(run);
   const verification = verificationOutcome(run);
   const evidence = run && isTerminalRunStatus(run.status) ? evidenceEntries(run.evidenceRefs) : [];
   const runDiagnostics = run ? diagnosticRows(run.diagnostics) : [];
@@ -512,8 +522,14 @@ export function ApplicationCompilerPanel() {
             </div>
           ) : null}
 
-          {approvalConflict ? (
+          {approvalConflict || awaitingApproval ? (
             <div className={styles.approveBlock} data-testid="compiler-approve-block">
+              {awaitingApproval ? (
+                <p className={styles.statusMuted} data-testid="compiler-awaiting-approval">
+                  {t('compiler.awaitingApprovalNotice')}{' '}
+                  <code className={styles.hash}>{run.planHash}</code>
+                </p>
+              ) : null}
               <Button
                 variant="primary"
                 onClick={() => void handleApprove()}

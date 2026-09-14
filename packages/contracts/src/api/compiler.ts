@@ -89,6 +89,30 @@ export interface CompilerPlanSummary {
 export interface CompilerPlanRequest {
   projectRoot: string;
   targetId: string;
+  /**
+   * Explicit per-call conflict resolution the plan should apply (beats the
+   * target config's `conflictPolicy`). A `force` plan is what an approval
+   * for a force compile binds to, so callers can pre-approve by planning
+   * with the same resolution and presenting the returned hash as
+   * `CompilerRunCreateRequest.approvedPlanHash`.
+   */
+  conflictResolution?: CompilerConflictResolution;
+}
+
+/**
+ * Request body for `POST /api/compiler/runs`. `conflictResolution` is the
+ * explicit per-call policy (beats the target config's `conflictPolicy`);
+ * when the effective policy for the run resolves to `force`, the daemon
+ * pauses the run in `awaiting_approval` instead of writing, unless
+ * `approvedPlanHash` already matches the plan hash the run computed under
+ * that resolution (inline approval).
+ */
+export interface CompilerRunCreateRequest {
+  projectRoot: string;
+  targetId: string;
+  runId?: string;
+  conflictResolution?: CompilerConflictResolution;
+  approvedPlanHash?: string;
 }
 
 /**
@@ -120,9 +144,15 @@ export interface CompilerPlanResult {
   evidenceRefs?: CompilerRunEvidenceRefs;
 }
 
-/** Approval body for `POST /api/compiler/runs/:id/approve`. */
+/**
+ * Approval body for `POST /api/compiler/runs/:id/approve`. `resolution`
+ * names what the approval authorizes; `force` is the only value today —
+ * it resumes a run paused in `awaiting_approval` and lets the compile
+ * overwrite manually-changed generated files under the approved plan.
+ */
 export interface CompilerApproveRequest {
   planHash: string;
+  resolution?: 'force';
 }
 
 export interface CompilerRunEvidenceRefs {
@@ -134,7 +164,14 @@ export interface CompilerRunEvidenceRefs {
 
 export interface CompilerRunStatus {
   runId: string;
-  status: 'queued' | 'validating' | 'lowering' | 'planning' | 'writing' | 'verifying' | 'succeeded' | 'failed' | 'cancelled';
+  /**
+   * `awaiting_approval` is a terminal-pending state: the run computed a
+   * plan whose effective conflict resolution is `force` and stopped before
+   * any write, carrying the `planHash` an approval must present. It leaves
+   * the state only through `POST /runs/:id/approve` (resume) or
+   * `POST /runs/:id/cancel`.
+   */
+  status: 'queued' | 'validating' | 'lowering' | 'planning' | 'writing' | 'verifying' | 'awaiting_approval' | 'succeeded' | 'failed' | 'cancelled';
   phase: 'validation' | 'lowering' | 'planning' | 'write' | 'verification' | 'idle';
   progress: number; // 0 to 100
   diagnostics: CompilerDiagnostic[];

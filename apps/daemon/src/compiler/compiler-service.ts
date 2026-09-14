@@ -7,6 +7,7 @@ import {
   planApplication,
   PlanApplicationResult,
   ApplicationCompilerInput,
+  resolveConflictResolution,
 } from "@open-design/application-compiler";
 import { computeSemanticHash } from "@open-design/application-ir";
 import { registerAllBuiltInAdapters } from "@open-design/application-targets";
@@ -15,7 +16,11 @@ import { ProjectWriter } from "./project-writer.js";
 import { runVerificationStep } from "./verification-runner.js";
 import { logCompilerEvent, CompilerLogEvent, CompilerLogEventName } from "./run-logger.js";
 import { runMetrics } from "./run-metrics.js";
-import { CompilerRunEvidenceRefs, CompilerRunStatus } from "@open-design/contracts";
+import {
+  CompilerConflictResolution,
+  CompilerRunEvidenceRefs,
+  CompilerRunStatus,
+} from "@open-design/contracts";
 
 registerAllBuiltInAdapters();
 
@@ -40,6 +45,44 @@ export class CompilerServiceError extends Error {
     super(message);
     this.name = "CompilerServiceError";
   }
+}
+
+/**
+ * Per-call options a run/plan accepts from `POST /api/compiler/runs` (and
+ * the plan endpoint for `conflictResolution`). `conflictResolution` uses
+ * the package precedence — request field > target config `conflictPolicy`
+ * > `block`. `approvedPlanHash` is an inline approval: when the effective
+ * resolution is `force` and this equals the plan hash the run computes,
+ * the force gate passes without pausing.
+ */
+export interface CompilerRunOptions {
+  conflictResolution?: CompilerConflictResolution;
+  approvedPlanHash?: string;
+}
+
+/**
+ * Effective conflict resolution for a run: request field > the target
+ * config's `conflictPolicy` > `block`. Resolved against the same parsed
+ * projection config the run compiles with, before any write can happen.
+ */
+function resolveRunConflictResolution(
+  config: any,
+  targetId: string,
+  requestResolution: CompilerConflictResolution | undefined
+): CompilerConflictResolution {
+  const targetConfig = Array.isArray(config?.targets)
+    ? config.targets.find((t: any) => t?.id === targetId)
+    : undefined;
+  const configPolicy =
+    targetConfig && isConflictResolution(targetConfig.conflictPolicy)
+      ? targetConfig.conflictPolicy
+      : undefined;
+  return resolveConflictResolution(requestResolution, configPolicy);
+}
+
+/** Narrow an untrusted value to the conflict-resolution vocabulary. */
+export function isConflictResolution(value: unknown): value is CompilerConflictResolution {
+  return value === "block" || value === "plan-only" || value === "force";
 }
 
 /** Filesystem-safe timestamp for evidence file names (2026-09-13T10-30-00-000Z). */
@@ -179,7 +222,8 @@ export const compilerService = {
   async startRun(
     projectRoot: string,
     targetId: string,
-    runId = `run-${Date.now()}`
+    runId = `run-${Date.now()}`,
+    options: CompilerRunOptions = {}
   ): Promise<CompilerRunStatus> {
     const startedAt = new Date().toISOString();
     const status: CompilerRunStatus = {
@@ -198,10 +242,14 @@ export const compilerService = {
       project_id: projectRoot,
       target_id: targetId,
       phase: "validation",
+      ...(options.conflictResolution
+        ? { conflict_resolution: options.conflictResolution }
+        : {}),
+      ...(options.approvedPlanHash ? { approved_plan_hash: options.approvedPlanHash } : {}),
     });
 
     // Run compile asynchronously
-    this.executeRun(projectRoot, targetId, runId).catch(console.error);
+    this.executeRun(projectRoot, targetId, runId, options).catch(console.error);
 
     return status;
   },
@@ -254,7 +302,8 @@ export const compilerService = {
    */
   async plan(
     projectRoot: string,
-    targetId: string
+    targetId: string,
+    options: Pick<CompilerRunOptions, "conflictResolution"> = {}
   ): Promise<PlanApplicationResult & { evidenceRefs: CompilerRunEvidenceRefs }> {
     const { input, config } = loadCompilerInput(projectRoot, targetId);
     const priorManifest = loadPriorManifest(projectRoot, targetId);
@@ -263,6 +312,9 @@ export const compilerService = {
     const result = await planApplication(input, config, targetId, {
       priorManifest,
       currentFilesFetcher: makeCurrentFilesFetcher(outputRoot),
+      ...(options.conflictResolution
+        ? { conflictResolution: options.conflictResolution }
+        : {}),
     });
 
     const plansDir = path.join(projectRoot, "compiler", "plans");
@@ -278,8 +330,22 @@ export const compilerService = {
    * run actually planned; anything else is a PLAN_HASH_MISMATCH (HTTP 409).
    * On success the run is marked approved (approvedPlanHash, in memory via
    * runPersistence) and an 'approved' SSE event is emitted.
+   *
+   * When the run is paused in `awaiting_approval` (a force-resolution run
+   * gated before any write), a matching approval also RESUMES it: the run
+   * is moved out of `awaiting_approval` synchronously — so a concurrent
+   * approve cannot double-resume — and executeRun re-runs with the approval
+   * inline. The re-run recomputes the gate hash, so if the disk changed
+   * since the pause, the presented hash no longer matches and the run
+   * re-gates with the fresh hash instead of overwriting under a stale
+   * approval. Runs that already terminated keep the historical
+   * idempotent-approve behavior (200, no resume).
    */
-  approve(runId: string, planHash: string): CompilerRunStatus {
+  approve(
+    runId: string,
+    planHash: string,
+    options: { resolution?: "force" } = {}
+  ): CompilerRunStatus {
     const run = runPersistence.get(runId);
     if (!run) {
       throw new CompilerServiceError("INPUT_NOT_FOUND", `Compiler run '${runId}' not found.`);
@@ -294,7 +360,10 @@ export const compilerService = {
         phase: "planning",
         ...extra,
       });
-    logApproval("approval_requested", { plan_hash: planHash });
+    logApproval("approval_requested", {
+      plan_hash: planHash,
+      ...(options.resolution ? { resolution: options.resolution } : {}),
+    });
     if (!run.planHash || run.planHash !== planHash) {
       logApproval("approval_rejected", {
         plan_hash: planHash,
@@ -307,10 +376,31 @@ export const compilerService = {
           : `Compiler run '${runId}' has no stored plan hash to approve against yet.`
       );
     }
+
+    const resume = run.status === "awaiting_approval" && ctx != null;
     run.approvedPlanHash = planHash;
+    if (resume) {
+      // Leave the pending state before dispatching so the status transition
+      // itself is the double-resume guard for concurrent approvals. The
+      // pause advisory is cleared: the resumed run reports its own phases.
+      run.status = "queued";
+      run.phase = "validation";
+      run.progress = 0;
+      run.diagnostics = [];
+    }
     runPersistence.save(run);
     logApproval("approval_resolved", { plan_hash: planHash });
     this.emitEvent(runId, "approved", run);
+    if (resume) {
+      // The approval binds the pair {planHash, 'force'}: the resumed compile
+      // runs with force passed per-call, so the explicit approval — not a
+      // possibly-re-edited projection config — is what authorizes the
+      // overwrite. executeRun re-runs the gate against the approved hash.
+      this.executeRun(ctx!.projectRoot, ctx!.targetId, runId, {
+        conflictResolution: "force",
+        approvedPlanHash: planHash,
+      }).catch(console.error);
+    }
     return run;
   },
 
@@ -354,7 +444,12 @@ export const compilerService = {
     return run;
   },
 
-  async executeRun(projectRoot: string, targetId: string, runId: string) {
+  async executeRun(
+    projectRoot: string,
+    targetId: string,
+    runId: string,
+    options: CompilerRunOptions = {}
+  ) {
     const status = runPersistence.get(runId);
     if (!status) return;
 
@@ -426,11 +521,66 @@ export const compilerService = {
       runMetrics.endPhase(runId, "validation");
       log("validation_completed", { phase: "validation" });
 
-      emitPhase("lowering", "lowering", 30);
-      log("lowering_started", { phase: "lowering" });
-
       const outputRoot = resolveOutputRoot(projectRoot, config, targetId);
       const currentFilesFetcher = makeCurrentFilesFetcher(outputRoot);
+
+      // Force-approval gate (spec §10.6/§13: force is never automatic).
+      // Whenever the effective resolution for this run would be 'force' —
+      // from the request OR merely from the projection config — the daemon
+      // must not write. Plan the run with that resolution first (the hash
+      // is what an approval presents back); without a matching
+      // approvedPlanHash the run pauses in 'awaiting_approval' before any
+      // compile or write. 'block' and 'plan-only' never gate. The plan hash
+      // does not encode the resolution, so the approval binds the PAIR
+      // {planHash, effectiveConflictResolution}: resume passes force
+      // explicitly, and the approve request names resolution:'force'.
+      const effectiveResolution = resolveRunConflictResolution(
+        config,
+        targetId,
+        options.conflictResolution
+      );
+      if (effectiveResolution === "force") {
+        const gatePlan = await planApplication(input, config, targetId, {
+          priorManifest,
+          currentFilesFetcher,
+          conflictResolution: effectiveResolution,
+        });
+        const computedPlanHash = gatePlan.planHash;
+        if (computedPlanHash && options.approvedPlanHash !== computedPlanHash) {
+          // Pause for approval: not failed, no compile, no writes. The run
+          // carries the computed hash and an advisory saying how to approve.
+          status.planHash = computedPlanHash;
+          status.phase = "planning";
+          status.progress = 50;
+          status.status = "awaiting_approval";
+          status.diagnostics = [
+            {
+              code: "approval_required",
+              message: `Conflict resolution 'force' would overwrite manually-changed generated file(s). The run paused before writing; approve plan hash ${computedPlanHash} to proceed.`,
+              severity: "advisory",
+              phase: "planning",
+              recommendedAction: `od app approve ${runId} --plan-hash ${computedPlanHash} --resolution force`,
+            },
+          ];
+          runPersistence.save(status);
+          log("approval_requested", {
+            phase: "planning",
+            plan_hash: computedPlanHash,
+            conflict_resolution: effectiveResolution,
+          });
+          this.emitEvent(runId, "awaiting_approval", status);
+          return;
+        }
+        if (computedPlanHash) {
+          // Inline approval: the create request already carried the hash the
+          // run computed under this resolution — the gate passes.
+          status.approvedPlanHash = computedPlanHash;
+          runPersistence.save(status);
+        }
+      }
+
+      emitPhase("lowering", "lowering", 30);
+      log("lowering_started", { phase: "lowering" });
 
       const compileRes = await compile(
         input.bundle,
@@ -445,6 +595,10 @@ export const compilerService = {
           runId,
           priorManifest,
           currentFilesFetcher,
+          // Effective resolution resolved above (request > config > block);
+          // passed per-call so a resumed force run keeps its approved force
+          // authority even if the config changed since the pause.
+          conflictResolution: effectiveResolution,
         }
       );
       runMetrics.endPhase(runId, "lowering");

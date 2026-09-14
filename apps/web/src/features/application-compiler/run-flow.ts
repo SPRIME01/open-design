@@ -38,7 +38,7 @@ export interface CompilerRunEvent {
 
 const RUN_STATUS_VALUES: ReadonlySet<string> = new Set([
   'queued', 'validating', 'lowering', 'planning', 'writing', 'verifying',
-  'succeeded', 'failed', 'cancelled',
+  'awaiting_approval', 'succeeded', 'failed', 'cancelled',
 ]);
 
 function looksLikeRunStatus(value: unknown): value is CompilerRunStatus {
@@ -117,6 +117,16 @@ export function isApprovalConflictRun(run: CompilerRunStatus | null | undefined)
     (diagnostic) => diagnostic.severity === 'error'
       && APPROVAL_CONFLICT_CODES.has(diagnostic.code),
   );
+}
+
+/**
+ * True when a run paused in `awaiting_approval`: its effective conflict
+ * resolution is `force` and the daemon stopped before any write, carrying
+ * the planHash an approval must present. Not terminal — approve resumes
+ * the run and the panel keeps following it.
+ */
+export function isAwaitingApprovalRun(run: CompilerRunStatus | null | undefined): boolean {
+  return Boolean(run && run.status === 'awaiting_approval' && run.planHash);
 }
 
 /** How a `POST /runs/:id/approve` call resolved, for panel messaging. */
