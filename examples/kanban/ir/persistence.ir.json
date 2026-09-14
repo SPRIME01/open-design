@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "kanban",
+  "aggregates": [
+    {
+      "id": "card",
+      "rootEntity": "card",
+      "transactionBoundary": true
+    }
+  ],
+  "repositories": [
+    {
+      "id": "card-repository",
+      "aggregate": "card",
+      "operations": ["get", "list", "insert", "update"]
+    }
+  ],
+  "relations": [],
+  "indexes": [
+    {
+      "id": "card-column-position",
+      "entity": "card",
+      "fields": ["column", "position"],
+      "unique": false
+    }
+  ],
+  "uniqueness": [],
+  "retention": [],
+  "deletionPolicies": [
+    {
+      "entity": "card",
+      "mode": "hard"
+    }
+  ],
+  "concurrency": [],
+  "migrationIntent": []
+}

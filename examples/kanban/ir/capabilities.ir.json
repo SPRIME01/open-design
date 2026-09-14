@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "kanban",
+  "queries": [
+    {
+      "id": "cards.list",
+      "input": "void",
+      "output": "card-page",
+      "authorization": "card.read",
+      "errors": ["SERVICE_UNAVAILABLE"]
+    }
+  ],
+  "commands": [
+    {
+      "id": "cards.create",
+      "input": "create-card-input",
+      "output": "card",
+      "transactional": true,
+      "idempotency": "required",
+      "authorization": "card.create",
+      "preconditions": [],
+      "effects": [
+        { "kind": "create", "entity": "card" }
+      ],
+      "errors": ["VALIDATION_FAILED", "SERVICE_UNAVAILABLE"]
+    },
+    {
+      "id": "cards.move",
+      "input": "move-card-input",
+      "output": "card",
+      "transactional": true,
+      "idempotency": "required",
+      "authorization": "card.update",
+      "preconditions": [],
+      "effects": [
+        { "kind": "update", "entity": "card" }
+      ],
+      "errors": ["VALIDATION_FAILED", "NOT_FOUND", "SERVICE_UNAVAILABLE"]
+    }
+  ],
+  "events": [],
+  "workflows": [],
+  "authorizationCapabilities": ["card.read", "card.create", "card.update"],
+  "errorCatalog": [
+    { "id": "VALIDATION_FAILED", "recoverable": true },
+    { "id": "NOT_FOUND", "recoverable": true },
+    { "id": "SERVICE_UNAVAILABLE", "recoverable": true }
+  ]
+}

@@ -1,0 +1,346 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "kanban",
+  "routes": [
+    {
+      "id": "route.board",
+      "path": "/",
+      "screen": "screen.board"
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen.board",
+      "rootNode": "semantic.board"
+    }
+  ],
+  "components": [],
+  "nodes": [
+    {
+      "id": "semantic.board",
+      "level": "semantic",
+      "kind": "kanban-board",
+      "slots": {
+        "content": [
+          "atomic.board-heading",
+          "component.add-card-form",
+          "component.column-todo",
+          "component.column-doing",
+          "component.column-done"
+        ]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {
+        "density": "comfortable",
+        "width": "wide"
+      },
+      "responsive": {
+        "phone": "stack",
+        "desktop": "grid"
+      },
+      "accessibility": {
+        "landmark": "main",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.board"
+    },
+    {
+      "id": "atomic.board-heading",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "large"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Kanban Board",
+        "headingLevel": 1
+      },
+      "sourceRef": "brief.board"
+    },
+    {
+      "id": "component.add-card-form",
+      "level": "component",
+      "kind": "form",
+      "slots": {
+        "fields": ["atomic.card-title-input"],
+        "actions": ["atomic.add-card-button"]
+      },
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "submit",
+          "operation": "cards.create",
+          "input": {
+            "title": "atomic.card-title-input.value"
+          }
+        }
+      ],
+      "states": ["idle", "submitting", "success", "validation-error", "service-error"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Add a card"
+      },
+      "sourceRef": "capability.cards.create"
+    },
+    {
+      "id": "atomic.card-title-input",
+      "level": "atomic",
+      "kind": "input",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": ["empty", "valid", "invalid"],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Card title",
+        "required": true
+      },
+      "sourceRef": "domain.card.title"
+    },
+    {
+      "id": "atomic.add-card-button",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "intent": "submit-nearest-form"
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "primary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Add card"
+      },
+      "sourceRef": "capability.cards.create"
+    },
+    {
+      "id": "component.column-todo",
+      "level": "component",
+      "kind": "list",
+      "slots": {
+        "heading": ["atomic.todo-heading"],
+        "items": ["component.card"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Todo column"
+      },
+      "sourceRef": "enum.card-column.todo"
+    },
+    {
+      "id": "atomic.todo-heading",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Todo",
+        "headingLevel": 2
+      },
+      "sourceRef": "enum.card-column.todo"
+    },
+    {
+      "id": "component.column-doing",
+      "level": "component",
+      "kind": "list",
+      "slots": {
+        "heading": ["atomic.doing-heading"],
+        "items": ["component.card"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Doing column"
+      },
+      "sourceRef": "enum.card-column.doing"
+    },
+    {
+      "id": "atomic.doing-heading",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Doing",
+        "headingLevel": 2
+      },
+      "sourceRef": "enum.card-column.doing"
+    },
+    {
+      "id": "component.column-done",
+      "level": "component",
+      "kind": "list",
+      "slots": {
+        "heading": ["atomic.done-heading"],
+        "items": ["component.card"]
+      },
+      "bindings": [],
+      "actions": [],
+      "states": ["loading", "empty", "ready", "error"],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {
+        "label": "Done column"
+      },
+      "sourceRef": "enum.card-column.done"
+    },
+    {
+      "id": "atomic.done-heading",
+      "level": "atomic",
+      "kind": "heading",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {
+        "size": "medium"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Done",
+        "headingLevel": 2
+      },
+      "sourceRef": "enum.card-column.done"
+    },
+    {
+      "id": "component.card",
+      "level": "component",
+      "kind": "card",
+      "slots": {
+        "content": ["atomic.card-title-text"],
+        "actions": ["atomic.move-card-button"]
+      },
+      "bindings": [
+        {
+          "property": "card",
+          "operation": "cards.list",
+          "path": "$.items[*]"
+        }
+      ],
+      "actions": [],
+      "states": ["idle", "dragging"],
+      "styleIntent": {
+        "surface": "raised"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Kanban card"
+      },
+      "sourceRef": "domain.card"
+    },
+    {
+      "id": "atomic.card-title-text",
+      "level": "atomic",
+      "kind": "text",
+      "children": [],
+      "bindings": [],
+      "actions": [],
+      "states": [],
+      "styleIntent": {},
+      "responsive": {},
+      "accessibility": {},
+      "sourceRef": "domain.card.title"
+    },
+    {
+      "id": "atomic.move-card-button",
+      "level": "atomic",
+      "kind": "button",
+      "children": [],
+      "bindings": [],
+      "actions": [
+        {
+          "trigger": "activate",
+          "operation": "cards.move",
+          "input": {
+            "id": "component.card.value.id",
+            "column": "component.card.value.next-column",
+            "position": "component.card.value.position"
+          }
+        }
+      ],
+      "states": ["enabled", "disabled", "pending"],
+      "styleIntent": {
+        "variant": "secondary"
+      },
+      "responsive": {},
+      "accessibility": {
+        "label": "Move card"
+      },
+      "sourceRef": "capability.cards.move"
+    }
+  ],
+  "flows": [],
+  "localState": [],
+  "operationBindings": [
+    {
+      "node": "component.column-todo",
+      "operation": "cards.list"
+    },
+    {
+      "node": "component.column-doing",
+      "operation": "cards.list"
+    },
+    {
+      "node": "component.column-done",
+      "operation": "cards.list"
+    },
+    {
+      "node": "component.add-card-form",
+      "operation": "cards.create"
+    },
+    {
+      "node": "component.card",
+      "operation": "cards.move"
+    }
+  ],
+  "tokenReferences": [
+    "--bg",
+    "--surface",
+    "--fg",
+    "--muted",
+    "--border",
+    "--accent"
+  ],
+  "accessibilityDefaults": {
+    "focusVisible": true,
+    "reducedMotion": true
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "kanban",
+  "entities": [
+    {
+      "id": "card",
+      "identity": "card.id",
+      "fields": [
+        { "id": "card.id", "type": "uuid", "generated": true },
+        { "id": "card.title", "type": "string", "minLength": 1, "maxLength": 140 },
+        { "id": "card.column", "type": "card-column", "default": "todo" },
+        { "id": "card.position", "type": "integer", "default": 0 },
+        { "id": "card.created-at", "type": "timestamp", "generated": true }
+      ],
+      "invariants": ["card.title-not-empty"]
+    }
+  ],
+  "enums": [
+    {
+      "id": "card-column",
+      "values": ["todo", "doing", "done"]
+    }
+  ],
+  "valueObjects": [],
+  "scalarTypes": [],
+  "invariants": [
+    {
+      "id": "card.title-not-empty",
+      "description": "A kanban card must have a non-empty title."
+    }
+  ],
+  "stateMachines": []
+}

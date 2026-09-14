@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "kanban",
+  "operations": [
+    {
+      "id": "cards.list",
+      "capability": "cards.list",
+      "input": "void",
+      "output": "card-page",
+      "errors": ["SERVICE_UNAVAILABLE"]
+    },
+    {
+      "id": "cards.create",
+      "capability": "cards.create",
+      "input": "create-card-input",
+      "output": "card",
+      "errors": ["VALIDATION_FAILED", "SERVICE_UNAVAILABLE"],
+      "idempotencyKey": "required"
+    },
+    {
+      "id": "cards.move",
+      "capability": "cards.move",
+      "input": "move-card-input",
+      "output": "card",
+      "errors": ["VALIDATION_FAILED", "NOT_FOUND", "SERVICE_UNAVAILABLE"],
+      "idempotencyKey": "required"
+    }
+  ],
+  "schemas": [
+    {
+      "id": "create-card-input",
+      "kind": "object",
+      "fields": [
+        { "id": "title", "type": "string", "required": true }
+      ]
+    },
+    {
+      "id": "move-card-input",
+      "kind": "object",
+      "fields": [
+        { "id": "id", "type": "string", "required": true },
+        { "id": "column", "type": "card-column", "required": true },
+        { "id": "position", "type": "integer" }
+      ]
+    },
+    {
+      "id": "card",
+      "kind": "object",
+      "fields": [
+        { "id": "id", "type": "uuid", "required": true },
+        { "id": "title", "type": "string", "required": true },
+        { "id": "column", "type": "card-column", "required": true },
+        { "id": "position", "type": "integer", "required": true },
+        { "id": "created-at", "type": "timestamp", "required": true }
+      ]
+    },
+    {
+      "id": "card-page",
+      "kind": "object",
+      "fields": [
+        { "id": "items", "type": "array", "required": true },
+        { "id": "total", "type": "integer", "required": true }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "VALIDATION_FAILED",
+      "presentationHint": "field",
+      "field": "title"
+    },
+    {
+      "id": "NOT_FOUND",
+      "presentationHint": "message"
+    }
+  ],
+  "subscriptions": [],
+  "versioningPolicy": "compatible-additive"
+}
