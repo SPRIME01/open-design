@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import type {
   CompilerDiagnostic,
   CompilerEvidence,
+  CompilerMetricsSnapshot,
   CompilerPlanResult,
   CompilerRunStatus,
   CompilerTargetInfo,
@@ -55,6 +56,7 @@ const VALIDATE_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'project']);
 const TARGET_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS]);
 const PLAN_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'project', 'target']);
 const RUN_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS, 'run']);
+const METRICS_STRING_FLAGS = new Set([...GLOBAL_STRING_FLAGS]);
 const COMPILE_BOOLEAN_FLAGS = new Set([...GLOBAL_BOOLEAN_FLAGS, 'follow', 'wait']);
 
 type Flags = Record<string, string | boolean | undefined>;
@@ -260,6 +262,14 @@ Subcommands:
   conflicts list --run <run-id> [--json]
                                         Show plan conflicts recorded on a
                                         run's diagnostics. Read-only.
+  metrics [--json]                     Daemon-wide compiler run metrics
+                                        (spec §12.3): runs by terminal
+                                        status, per-target success, no-op
+                                        rate, phase durations, and the
+                                        conflict/degraded/verification-
+                                        failure counters. Read-only;
+                                        counters reset when the daemon
+                                        restarts.
 
 Common flags:
   --project <dir>       Project root containing application.ir.json
@@ -828,6 +838,78 @@ async function appConflicts(rest: string[]): Promise<void> {
   return appConflictsList(rest);
 }
 
+// ---- metrics -------------------------------------------------------------------
+
+/**
+ * Human rendering of the daemon's compiler metrics snapshot (spec §12.3).
+ * Every section prints even when empty (`(none)`) so the output shape stays
+ * stable for eyeballs and for scripts scraping the human surface.
+ */
+function printMetricsSnapshot(m: CompilerMetricsSnapshot): void {
+  console.log('Compiler metrics (in-process; counters reset on daemon restart):');
+
+  console.log('Runs by terminal status:');
+  const terminalEntries = Object.entries(m.runsByTerminalStatus);
+  if (terminalEntries.length === 0) console.log('  (none)');
+  for (const [status, count] of terminalEntries) console.log(`  ${status}: ${count}`);
+
+  console.log('Per-target success (cancelled runs excluded):');
+  const targetEntries = Object.entries(m.targetSuccessRate);
+  if (targetEntries.length === 0) console.log('  (none)');
+  for (const [target, stats] of targetEntries) {
+    const pct = stats.total > 0 ? Math.round((stats.succeeded / stats.total) * 100) : 0;
+    console.log(`  ${target}: ${stats.succeeded}/${stats.total} (${pct}%)`);
+  }
+
+  console.log(`No-op rate: ${m.noopRate.noops}/${m.noopRate.recompiles} recompiles were no-ops`);
+
+  console.log('Phase durations (last / cumulative ms):');
+  const phaseEntries = Object.entries(m.phaseDurationsMs);
+  if (phaseEntries.length === 0) console.log('  (none)');
+  for (const [phase, stats] of phaseEntries) console.log(`  ${phase}: ${stats.lastMs} / ${stats.cumulativeMs}`);
+
+  console.log('Counters:');
+  console.log(`  conflicts: ${m.conflictCount}`);
+  console.log(`  degraded semantics: ${m.degradedSemanticCount}`);
+  const failureCategories = Object.entries(m.verificationFailureCategory).filter(([, n]) => n > 0);
+  console.log(
+    `  verification failures by category: ${
+      failureCategories.length > 0
+        ? failureCategories.map(([cat, n]) => `${cat}=${n}`).join(' ')
+        : 'none'
+    }`,
+  );
+}
+
+/**
+ * `od app metrics`: the CLI twin of `GET /api/compiler/metrics`. Daemon-wide,
+ * so it takes no --project/--target — only the global --daemon-url/--json.
+ */
+export async function appMetrics(rest: string[]): Promise<void> {
+  const flags = parseArgs(rest, METRICS_STRING_FLAGS, GLOBAL_BOOLEAN_FLAGS);
+  if (isHelp(flags)) {
+    printAppHelp();
+    process.exit(EXIT_OK);
+  }
+  const base = await daemonBaseUrl(flags);
+  let resp: Response;
+  try {
+    resp = await fetch(`${base}/api/compiler/metrics`);
+  } catch (err) {
+    connectError(base, err);
+  }
+  if (!resp.ok) {
+    console.error(`Failed to fetch compiler metrics: ${await httpErrorMessage(resp)}`);
+    process.exit(EXIT_FAILURE);
+  }
+  const snapshot = (await resp.json()) as CompilerMetricsSnapshot;
+  if (flags.json === true) {
+    process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`);
+    return;
+  }
+  printMetricsSnapshot(snapshot);
+}
+
 // ---- dispatch -----------------------------------------------------------------
 
 export interface AppDispatchFlags {
@@ -873,6 +955,8 @@ export async function runApp(
       return appRun(rest);
     case 'conflicts':
       return appConflicts(rest);
+    case 'metrics':
+      return appMetrics(rest);
     default:
       console.error(`unknown subcommand: od app ${sub}`);
       printAppHelp();

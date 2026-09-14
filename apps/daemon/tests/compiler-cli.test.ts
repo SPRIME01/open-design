@@ -404,6 +404,80 @@ describe('od app CLI', () => {
     expect(parsed.conflicts).toEqual([run.diagnostics[0]]);
   });
 
+  it('metrics renders the human summary and --json round-trips the snapshot', async () => {
+    const metricsPayload = {
+      runsByTerminalStatus: { succeeded: 3, failed: 1, cancelled: 2 },
+      phaseDurationsMs: {
+        validation: { lastMs: 12, cumulativeMs: 45 },
+        write: { lastMs: 7, cumulativeMs: 21 },
+      },
+      targetSuccessRate: { 'html-static': { succeeded: 2, total: 3 } },
+      noopRate: { noops: 1, recompiles: 3 },
+      conflictCount: 1,
+      degradedSemanticCount: 0,
+      verificationFailureCategory: { build: 1, runtime: 0, a11y: 0, migration: 0 },
+    };
+    const { server, baseUrl, seen } = await startFakeServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/api/compiler/metrics') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(metricsPayload));
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not found' }));
+    });
+    openServers.push(server);
+
+    const human = await runCli(['app', 'metrics', '--daemon-url', baseUrl]);
+    expect(human.stdout).toContain('Runs by terminal status:');
+    expect(human.stdout).toContain('succeeded: 3');
+    expect(human.stdout).toContain('cancelled: 2');
+    expect(human.stdout).toContain('Per-target success (cancelled runs excluded):');
+    expect(human.stdout).toContain('html-static: 2/3 (67%)');
+    expect(human.stdout).toContain('No-op rate: 1/3 recompiles were no-ops');
+    expect(human.stdout).toContain('Phase durations (last / cumulative ms):');
+    expect(human.stdout).toContain('validation: 12 / 45');
+    expect(human.stdout).toContain('Counters:');
+    expect(human.stdout).toContain('conflicts: 1');
+    expect(human.stdout).toContain('verification failures by category: build=1');
+
+    const jsonRun = await runCli(['app', 'metrics', '--daemon-url', baseUrl, '--json']);
+    expect(JSON.parse(jsonRun.stdout)).toEqual(metricsPayload);
+
+    expect(seen).toEqual([
+      { method: 'GET', url: '/api/compiler/metrics', body: '' },
+      { method: 'GET', url: '/api/compiler/metrics', body: '' },
+    ]);
+  });
+
+  it('metrics renders the empty snapshot without crashing', async () => {
+    const emptyPayload = {
+      runsByTerminalStatus: {},
+      phaseDurationsMs: {},
+      targetSuccessRate: {},
+      noopRate: { noops: 0, recompiles: 0 },
+      conflictCount: 0,
+      degradedSemanticCount: 0,
+      verificationFailureCategory: {},
+    };
+    const { server, baseUrl } = await startFakeServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/api/compiler/metrics') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(emptyPayload));
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not found' }));
+    });
+    openServers.push(server);
+
+    const { stdout } = await runCli(['app', 'metrics', '--daemon-url', baseUrl]);
+    expect(stdout).toContain('Runs by terminal status:');
+    expect(stdout).toContain('(none)');
+    expect(stdout).toContain('No-op rate: 0/0 recompiles were no-ops');
+    expect(stdout).toContain('verification failures by category: none');
+  });
+
   it('compile --follow streams SSE frames and ends on the terminal event', async () => {
     const started = {
       runId: 'run-follow-1',
