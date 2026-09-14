@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { PlanConflictEntry } from "./conflict.js";
 
 export interface CompilePlan {
   planVersion: string;
@@ -11,7 +12,13 @@ export interface CompilePlan {
   modifies: string[];
   deletes: string[];
   reuses: string[];
-  conflicts: any[];
+  conflicts: PlanConflictEntry[];
+  /**
+   * Paths retained unchanged under conflict policy 'plan-only'. Present only
+   * when the effective policy retained at least one conflicting file; the
+   * matching conflicts[] entries carry resolution 'plan-only'.
+   */
+  retainedConflicts?: string[];
   unresolved: string[];
   degradations: string[];
   permissionsRequired: string[];

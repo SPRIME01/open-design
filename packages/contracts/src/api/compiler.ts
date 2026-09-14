@@ -57,6 +57,17 @@ export interface CompilerIrResponse {
   };
 }
 
+/**
+ * How a compiler run resolves generated-file conflicts. Mirrors the
+ * projection config's `conflictPolicy` enum in `@open-design/application-ir`
+ * and `ConflictResolution` in `@open-design/application-compiler`
+ * (src/conflict.ts); the three packages do not depend on each other, so keep
+ * the shapes in sync. Vocabulary mapping to the compiler spec (§10.6/§13/§14):
+ * `block` = default block; `plan-only` = retain-manual (manual bytes kept,
+ * ownership never taken); `force` = regenerate / explicitly approved force.
+ */
+export type CompilerConflictResolution = 'block' | 'plan-only' | 'force';
+
 export interface CompilerPlanSummary {
   planHash: string;
   targetId: string;
@@ -64,7 +75,10 @@ export interface CompilerPlanSummary {
   modifies: string[];
   deletes: string[];
   reuses: string[];
-  conflicts: { path: string; classification: string }[];
+  /** Per-conflict treatment under the run's effective policy; `resolution` names how each was handled. */
+  conflicts: { path: string; classification: string; resolution?: CompilerConflictResolution }[];
+  /** Paths retained unchanged under conflict policy 'plan-only'; present only when at least one conflict was retained. */
+  retainedConflicts?: string[];
   unresolved: string[];
   degradations: string[];
   permissionsRequired: string[];
@@ -95,6 +109,13 @@ export interface CompilerPlanResult {
   diagnostics: CompilerDiagnostic[];
   plan?: CompilerPlanSummary;
   planHash?: string;
+  /**
+   * The conflict policy the plan actually applied (explicit per-call option >
+   * target config `conflictPolicy` > 'block'); callers bind approvals to it.
+   * Mirrors `PlanApplicationResult.effectiveConflictResolution` in
+   * `@open-design/application-compiler`; keep the shapes in sync.
+   */
+  effectiveConflictResolution?: CompilerConflictResolution;
   /** Where the daemon persisted the plan summary (`<projectRoot>/compiler/plans/…`). */
   evidenceRefs?: CompilerRunEvidenceRefs;
 }

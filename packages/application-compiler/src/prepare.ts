@@ -13,7 +13,7 @@ import {
   ApplicationTargetAdapter,
   FileChange,
 } from "./adapter-contract.js";
-import { ConflictClassification, classifyPath } from "./conflict.js";
+import { PlanConflictEntry, classifyPath } from "./conflict.js";
 import { GeneratedFileManifest } from "./manifest.js";
 
 /**
@@ -151,7 +151,7 @@ export interface PlanFileBuckets {
   creates: string[];
   modifies: string[];
   reuses: string[];
-  conflicts: { path: string; classification: ConflictClassification }[];
+  conflicts: PlanConflictEntry[];
 }
 
 /**
